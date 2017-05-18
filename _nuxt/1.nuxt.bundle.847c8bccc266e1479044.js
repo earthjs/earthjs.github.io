@@ -1,0 +1,1 @@
+webpackJsonp([1],{135:function(t,e,n){var r=n(16)(null,n(137),null,null);t.exports=r.exports},137:function(t,e){t.exports={render:function(){var t=this,e=t.$createElement,n=t._self._c||e;return n("div",[n("svg",{attrs:{id:"earth"}}),t._v("\n    LOL....\n    "),n("script",{attrs:{type:"text/javascript",src:"./js/index.js"}})])},staticRenderFns:[]}}});
