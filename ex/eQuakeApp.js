@@ -12,7 +12,7 @@ const eQuakeApp = () => {
         onReady(err, world, equake) {
             _.world = world;
             _.equake = equake;
-            this.eQuakeApp.mag(3);
+            this.eQuakeApp.mag(5);
             this.worldCanvas.data({world});
         },
         onInit() {

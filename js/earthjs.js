@@ -74,12 +74,11 @@ var versor = versorFn();
 var earthjs$1 = function earthjs() {
     var options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
 
+    /*eslint no-console: 0 */
     clearInterval(earthjs.ticker);
     options = Object.assign({
         select: '#earth',
-        rotate: 130,
-        height: 500,
-        width: 700
+        rotate: 130
     }, options);
     var _ = {
         onResize: {},
@@ -93,15 +92,23 @@ var earthjs$1 = function earthjs() {
 
         renderOrder: ['renderThree', 'svgAddDropShadow', 'svgAddCanvas', 'canvasAddGraticule', 'canvasAddWorldOrCountries', 'canvasAddDots', 'svgAddOcean', 'svgAddGlobeShading', 'svgAddGraticule', 'svgAddWorldOrCountries', 'svgAddGlobeHilight', 'svgAddPlaces', 'svgAddPings', 'svgAddDots', 'svgAddBar'],
         ready: null,
-        loadingData: null
+        loadingData: null,
+        promeses: []
     };
     var drag = false;
-    var width = options.width;
-    var height = options.height;
-    var center = [width / 2, height / 2];
+    var svg = d3.selectAll(options.select);
+    var width = svg.attr('width'),
+        height = svg.attr('height');
     var ltScale = d3.scaleLinear().domain([0, width]).range([-180, 180]);
-    var svg = d3.selectAll(options.select).attr("width", width).attr("height", height);
-    var planet = {
+    if (!width || !height) {
+        width = options.width || 700;
+        height = options.height || 500;
+        svg.attr("width", width).attr("height", height);
+    }
+    options.width = width;
+    options.height = height;
+    var center = [width / 2, height / 2];
+    var globe = {
         _: {
             svg: svg,
             drag: drag,
@@ -113,46 +120,62 @@ var earthjs$1 = function earthjs() {
         $: {},
         ready: function ready(fn) {
             if (fn) {
-                _.ready = fn;
+                if (_.promeses.length > 0) {
+                    _.loadingData = true;
+                    var q = d3.queue();
+                    _.promeses.forEach(function (obj) {
+                        obj.urls.forEach(function (url) {
+                            var ext = url.split('.').pop();
+                            if (ext === 'geojson') {
+                                ext = 'json';
+                            }
+                            q.defer(d3[ext], url);
+                        });
+                    });
+                    q.await(function () {
+                        var args = [].slice.call(arguments);
+                        var err = args.shift();
+                        _.promeses.forEach(function (obj) {
+                            var ln = obj.urls.length;
+                            var ar = args.slice(0, ln);
+                            ar.unshift(err);
+
+                            obj.onReady.apply(globe, ar);
+                            args = args.slice(ln);
+                        });
+                        _.loadingData = false;
+                        fn.call(globe);
+                    });
+                }
             } else {
                 return _.loadingData;
             }
         },
         register: function register(obj) {
             var ar = {};
-            planet[obj.name] = ar;
+            globe[obj.name] = ar;
             Object.keys(obj).forEach(function (fn) {
                 if (['urls', 'onReady', 'onInit', 'onResize', 'onRefresh', 'onInterval'].indexOf(fn) === -1) {
                     if (typeof obj[fn] === 'function') {
                         ar[fn] = function () {
-                            return obj[fn].apply(planet, arguments);
+                            return obj[fn].apply(globe, arguments);
                         };
                     }
                 }
             });
             if (obj.onInit) {
-                obj.onInit.call(planet);
+                obj.onInit.call(globe);
             }
             qEvent(obj, 'onResize');
             qEvent(obj, 'onRefresh');
             qEvent(obj, 'onInterval');
             if (obj.urls && obj.onReady) {
-                _.loadingData = true;
-                var q = d3.queue();
-                obj.urls.forEach(function (url) {
-                    var ext = url.split('.').pop();
-                    if (ext === 'geojson') {
-                        ext = 'json';
-                    }
-                    q.defer(d3[ext], url);
-                });
-                q.await(function () {
-                    obj.onReady.apply(planet, arguments);
-                    _.loadingData = false;
-                    _.ready.call(planet);
+                _.promeses.push({
+                    urls: obj.urls,
+                    onReady: obj.onReady
                 });
             }
-            return planet;
+            return globe;
         }
     };
 
@@ -160,91 +183,90 @@ var earthjs$1 = function earthjs() {
     var earths = [];
     var ticker = null;
 
-    planet.svgDraw = function (twinEarth) {
-        var $ = planet.$;
+    globe.svgDraw = function (twinEarth) {
+        var $ = globe.$;
         earths = twinEarth || [];
         _.renderOrder.forEach(function (renderer) {
-            $[renderer] && $[renderer].call(planet);
+            $[renderer] && $[renderer].call(globe);
         });
         earths.forEach(function (p) {
             p.svgDraw(null);
         });
         if (ticker === null && earths !== []) {
-            planet._.ticker.call(planet);
+            globe._.ticker.call(globe);
         }
-        return planet;
+        return globe;
     };
 
-    planet._.defs = planet._.svg.append("defs");
-    planet._.ticker = function (interval) {
-        var ex = planet._.intervalRun;
+    globe._.defs = globe._.svg.append("defs");
+    globe._.ticker = function (interval) {
+        var ex = globe._.intervalRun;
         interval = interval || 50;
         ticker = setInterval(function () {
-            ex.call(planet);
+            ex.call(globe);
             earths.forEach(function (p) {
                 p._.intervalRun.call(p);
             });
         }, interval);
         earthjs.ticker = ticker;
-        return planet;
+        return globe;
     };
 
     //----------------------------------------
     // Helper
-    planet._.scale = function (y) {
-        planet._.proj.scale(y);
-        planet._.resize.call(planet);
-        planet._.refresh.call(planet);
-        return planet;
+    globe._.scale = function (y) {
+        globe._.proj.scale(y);
+        globe._.resize.call(globe);
+        globe._.refresh.call(globe);
+        return globe;
     };
 
-    planet._.rotate = function (r) {
-        planet._.proj.rotate(r);
-        planet._.refresh.call(planet);
-        return planet;
+    globe._.rotate = function (r) {
+        globe._.proj.rotate(r);
+        globe._.refresh.call(globe);
+        return globe;
     };
 
-    planet._.intervalRun = function () {
+    globe._.intervalRun = function () {
         _.onIntervalKeys.forEach(function (fn) {
-            _.onInterval[fn].call(planet);
+            _.onInterval[fn].call(globe);
         });
-        return planet;
+        return globe;
     };
 
-    planet._.refresh = function (filter) {
+    globe._.refresh = function (filter) {
         var keys = filter ? _.onRefreshKeys.filter(function (d) {
             return filter.test(d);
         }) : _.onRefreshKeys;
         keys.forEach(function (fn) {
-            _.onRefresh[fn].call(planet);
+            _.onRefresh[fn].call(globe);
         });
-        return planet;
+        return globe;
     };
 
-    planet._.resize = function () {
+    globe._.resize = function () {
         _.onResizeKeys.forEach(function (fn) {
-            _.onResize[fn].call(planet);
+            _.onResize[fn].call(globe);
         });
-        return planet;
+        return globe;
     };
 
-    planet._.orthoGraphic = function () {
-        var width = planet._.options.width;
-        var height = planet._.options.height;
-        var rotate = planet._.options.rotate;
-        var ltRotate = planet._.ltScale(rotate);
-        return d3.geoOrthographic().scale(width / 3.5).rotate([ltRotate, 0]).translate([width / 2, height / 2]).precision(0.1).clipAngle(90);
+    globe._.orthoGraphic = function () {
+        var width = globe._.options.width;
+        var height = globe._.options.height;
+        var rotate = globe._.options.rotate;
+        return d3.geoOrthographic().scale(width / 3.5).rotate([rotate, 0]).translate([width / 2, height / 2]).precision(0.1).clipAngle(90);
     };
 
-    planet._.addRenderer = function (name) {
+    globe._.addRenderer = function (name) {
         if (_.renderOrder.indexOf(name) < 0) {
             _.renderOrder.push(name);
         }
     };
 
-    planet._.proj = planet._.orthoGraphic();
-    planet._.path = d3.geoPath().projection(planet._.proj);
-    return planet;
+    globe._.proj = globe._.orthoGraphic();
+    globe._.path = d3.geoPath().projection(globe._.proj);
+    return globe;
     //----------------------------------------
     function qEvent(obj, qname) {
         if (obj[qname]) {
@@ -642,8 +664,8 @@ var autorotatePlugin = (function (degPerSec) {
             } else {
                 var delta = now - _.lastTick;
                 rotate.call(this, delta);
-                _.sync.forEach(function (p) {
-                    return rotate.call(p, delta);
+                _.sync.forEach(function (g) {
+                    return rotate.call(g, delta);
                 });
                 _.lastTick = now;
             }
