@@ -7,13 +7,15 @@ const eQuakeApp = () => {
         name: 'eQuakeApp',
         urls: [
             './d/world-110m.json',
+            './d/world-110m-country-names.tsv',
             'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson',
         ],
-        onReady(err, world, equake) {
+        onReady(err, world, countryNames, equake) {
             _.world = world;
             _.equake = equake;
             this.eQuakeApp.mag(5);
-            this.worldCanvas.data({world});
+            this.countrySelectCanvas.world(world);
+            this.worldCanvas.data({world, countryNames});
         },
         onInit() {
             this.register(earthjs.plugins.commonPlugins());
@@ -21,6 +23,8 @@ const eQuakeApp = () => {
             this.register(earthjs.plugins.dotsCanvas());
             this.register(earthjs.plugins.barPlugin());
             this.register(earthjs.plugins.barTooltipPlugin());
+            this.register(earthjs.plugins.countrySelectCanvas());
+            this.register(earthjs.plugins.countryTooltipCanvas());
             this.commonPlugins.addChecker('showPings:Pings:showPings'.split(':'));
             this.commonPlugins.addChecker('showBars:Bars:showBars'.split(':'));
             this.commonPlugins.addChecker('showDots:Dots:showDots'.split(':'));
