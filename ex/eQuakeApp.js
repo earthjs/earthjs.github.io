@@ -36,12 +36,28 @@ const eQuakeApp = () => {
                 }
                 return {properties: {mag,tsunami,eventtime,place}};
             }
+            this._.options.transparent = true;
         },
         mag(mag) {
             const features = _.equake.features.filter(d => d.properties.mag>=mag);
-            this.barPlugin.data({features});
-            this.dotsCanvas.data({features});
-            this.pingsCanvas.data({features});
+            const maxMag = features.map(d => d.properties.mag).sort(d3.descending)[0];
+            const scale = d3.scaleLinear().domain([3, maxMag]).range([0.5, 2]);
+            features.forEach(d => {
+                d.geometry.value = d.properties.mag;
+                d.geometry.radius = scale(d.properties.mag);
+            });
+            const dataMssg = {
+                features,
+                geometry: {
+                    radius: 1,
+                    lineWidth: 0.5,
+                    fillStyle: 'rgba(100,0,0,.4)',
+                    strokeStyle: 'rgba(100,0,0,.6)'
+                }
+            }
+            this.barPlugin.data(dataMssg);
+            this.dotsCanvas.data(dataMssg);
+            this.pingsCanvas.data(dataMssg);
             this.svgDraw();
         },
     }

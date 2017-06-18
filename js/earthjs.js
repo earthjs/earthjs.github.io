@@ -77,6 +77,7 @@ var earthjs$1 = function earthjs() {
     /*eslint no-console: 0 */
     clearInterval(earthjs.ticker);
     options = Object.assign({
+        transparent: false,
         select: '#earth',
         rotate: 130
     }, options);
@@ -198,6 +199,7 @@ var earthjs$1 = function earthjs() {
     //----------------------------------------
     var earths = [];
     var ticker = null;
+    var __ = globe._;
 
     globe.svgDraw = function (twinEarth) {
         var $ = globe.$;
@@ -209,17 +211,18 @@ var earthjs$1 = function earthjs() {
             p.svgDraw(null);
         });
         if (ticker === null && earths !== []) {
-            globe._.ticker.call(globe);
+            __.ticker();
         }
         return globe;
     };
 
-    globe._.defs = globe._.svg.append("defs");
-    globe._.ticker = function (interval) {
-        var ex = globe._.intervalRun;
+    __.defs = __.svg.append("defs");
+    __.ticker = function (interval) {
+        var intervalRun = __.intervalRun;
         interval = interval || 50;
         ticker = setInterval(function () {
-            ex.call(globe);
+            // 33% less CPU compare with d3.timer
+            intervalRun.call(globe);
             earths.forEach(function (p) {
                 p._.intervalRun.call(p);
             });
@@ -230,27 +233,27 @@ var earthjs$1 = function earthjs() {
 
     //----------------------------------------
     // Helper
-    globe._.scale = function (y) {
-        globe._.proj.scale(y);
-        globe._.resize.call(globe);
-        globe._.refresh.call(globe);
+    __.scale = function (y) {
+        __.proj.scale(y);
+        __.resize();
+        __.refresh();
         return globe;
     };
 
-    globe._.rotate = function (r) {
-        globe._.proj.rotate(r);
-        globe._.refresh.call(globe);
+    __.rotate = function (r) {
+        __.proj.rotate(r);
+        __.refresh();
         return globe;
     };
 
-    globe._.intervalRun = function () {
+    __.intervalRun = function () {
         _.onIntervalKeys.forEach(function (fn) {
             _.onInterval[fn].call(globe);
         });
         return globe;
     };
 
-    globe._.refresh = function (filter) {
+    __.refresh = function (filter) {
         var keys = filter ? _.onRefreshKeys.filter(function (d) {
             return filter.test(d);
         }) : _.onRefreshKeys;
@@ -260,28 +263,25 @@ var earthjs$1 = function earthjs() {
         return globe;
     };
 
-    globe._.resize = function () {
+    __.resize = function () {
         _.onResizeKeys.forEach(function (fn) {
             _.onResize[fn].call(globe);
         });
         return globe;
     };
 
-    globe._.orthoGraphic = function () {
-        var width = globe._.options.width;
-        var height = globe._.options.height;
-        var rotate = globe._.options.rotate;
-        return d3.geoOrthographic().scale(width / 3.5).rotate([rotate, 0]).translate([width / 2, height / 2]).precision(0.1).clipAngle(90);
+    __.orthoGraphic = function () {
+        return d3.geoOrthographic().rotate([__.options.rotate, 0]).scale(__.options.width / 3.5).translate(__.center).precision(0.1).clipAngle(90);
     };
 
-    globe._.addRenderer = function (name) {
+    __.addRenderer = function (name) {
         if (_.renderOrder.indexOf(name) < 0) {
             _.renderOrder.push(name);
         }
     };
 
-    globe._.proj = globe._.orthoGraphic();
-    globe._.path = d3.geoPath().projection(globe._.proj);
+    __.proj = __.orthoGraphic();
+    __.path = d3.geoPath().projection(__.proj);
     return globe;
     //----------------------------------------
     function qEvent(obj, qname) {
@@ -294,11 +294,12 @@ var earthjs$1 = function earthjs() {
 
 // Mike Bostock’s Block https://bl.ocks.org/mbostock/7ea1dde508cec6d2d95306f92642bc42
 var versorDragPlugin = function () {
-    var _ = { svg: null, q: null, sync: [] };
+    /*eslint no-console: 0 */
+    var _ = { svg: null, q: null, sync: [], mouse: null, onDrag: {}, onDragKeys: [] };
 
     function dragSetup() {
-        var _this = this,
-            versor = this._.versor;
+        var __ = this._;
+        var versor = __.versor;
         _.svg.call(d3.drag().on('start', dragstarted).on('end', dragsended).on('drag', dragged));
 
         var v0 = void 0,
@@ -307,8 +308,7 @@ var versorDragPlugin = function () {
             // Projection rotation as Euler angles at start.
         q0 = void 0; // Projection rotation as versor at start.
 
-        function rotate(src) {
-            var r = src._.proj.rotate();
+        function rotate(r) {
             var d = r[0] - r0[0];
             r[0] = d + this._.proj.rotate()[0];
             if (r[0] >= 180) r[0] -= 360;
@@ -316,27 +316,37 @@ var versorDragPlugin = function () {
         }
 
         function dragstarted() {
-            v0 = versor.cartesian(_this._.proj.invert(d3.mouse(this)));
-            r0 = _this._.proj.rotate();
+            v0 = versor.cartesian(__.proj.invert(d3.mouse(this)));
+            r0 = __.proj.rotate();
             q0 = versor(r0);
-            _this._.drag = null;
-            _this._.refresh();
+            __.drag = null;
+            __.refresh();
+            _.mouse = null;
         }
 
         function dragged() {
-            var v1 = versor.cartesian(_this._.proj.rotate(r0).invert(d3.mouse(this))),
+            var _this = this;
+
+            var mouse = d3.mouse(this);
+            var v1 = versor.cartesian(__.proj.rotate(r0).invert(mouse)),
                 q1 = versor.multiply(q0, versor.delta(v0, v1)),
                 r1 = versor.rotation(q1);
-            _this._.rotate(r1);
-            _this._.drag = true;
+            __.rotate(r1);
+            __.drag = true;
+            _.mouse = mouse;
+            _.onDragKeys.forEach(function (k) {
+                _.onDrag[k].call(_this, mouse);
+            });
         }
 
         function dragsended() {
-            _.sync.forEach(function (p) {
-                rotate.call(p, _this);
+            var r = __.proj.rotate();
+            _.sync.forEach(function (g) {
+                rotate.call(g, r);
             });
-            _this._.drag = false;
-            _this._.refresh();
+            __.drag = false;
+            __.refresh();
+            _.mouse = null;
         }
     }
 
@@ -349,6 +359,7 @@ var versorDragPlugin = function () {
         selectAll: function selectAll(q) {
             if (q) {
                 _.q = q;
+                _.svg.call(d3.drag().on('start', null).on('end', null).on('drag', null));
                 _.svg = d3.selectAll(q);
                 dragSetup.call(this);
             }
@@ -356,21 +367,50 @@ var versorDragPlugin = function () {
         },
         sync: function sync(arr) {
             _.sync = arr;
+        },
+        mouse: function mouse() {
+            return _.mouse;
+        },
+        onDrag: function onDrag(obj) {
+            Object.assign(_.onDrag, obj);
+            _.onDragKeys = Object.keys(_.onDrag);
         }
     };
 };
 
 var wheelZoomPlugin = function () {
+    /*eslint no-console: 0 */
+    var _ = { svg: null, q: null, sync: [] };
+
+    function zoomSetup() {
+        var __ = this._;
+        _.svg.on('wheel', function () {
+            var y = d3.event.deltaY + __.proj.scale();
+            y = y < 20 ? 20 : y > 999 ? 1000 : y;
+            __.scale(y);
+            _.sync.forEach(function (g) {
+                g._.scale.call(g, y);
+            });
+        });
+    }
+
     return {
         name: 'wheelZoomPlugin',
         onInit: function onInit() {
-            var _this = this;
-            this._.svg.on('wheel', function () {
-                var y = d3.event.deltaY + _this._.proj.scale();
-                if (y > 230 && y < 1000) {
-                    _this._.scale(y);
-                }
-            });
+            _.svg = this._.svg;
+            zoomSetup.call(this);
+        },
+        selectAll: function selectAll(q) {
+            if (q) {
+                _.q = q;
+                _.svg.on('wheel', null);
+                _.svg = d3.selectAll(q);
+                zoomSetup.call(this);
+            }
+            return _.svg;
+        },
+        sync: function sync(arr) {
+            _.sync = arr;
         }
     };
 };
@@ -453,27 +493,32 @@ var canvasPlugin = (function () {
             }
             return _.canvas;
         },
-        render: function render(fn, drawTo, options) {
+        render: function render(fn, drawTo) {
+            var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : [];
+
             if (this._.options.showCanvas) {
                 var rChange = false;
+                var proj = this._.proj;
+                var r = proj.rotate();
                 var _this = this;
-                var r = this._.proj.rotate();
                 _.canvas.each(function (obj, idx) {
-                    var context = this.getContext("2d");
                     if (!drawTo || drawTo.indexOf(idx) > -1) {
-                        var o = options && options[idx];
-                        if (o && o.rotate) {
-                            var newR = [r[0] + o.rotate, r[1], r[2]];
-                            _this._.proj.rotate(newR);
+                        var o = options[idx] || {};
+                        if (o.rotate) {
                             rChange = true;
-                        }
-                        fn.call(_this, context, _.path.context(context));
-                        if (rChange) {
+                            proj.rotate([r[0] + o.rotate, r[1], r[2]]);
+                        } else if (rChange) {
                             rChange = false;
-                            _this._.proj.rotate(r);
+                            proj.rotate(r);
                         }
+                        var context = this.getContext("2d");
+                        fn.call(_this, context, _.path.context(context));
                     }
                 });
+                if (rChange) {
+                    rChange = false;
+                    proj.rotate(r);
+                }
             }
         }
     };
@@ -535,8 +580,8 @@ var configPlugin = function () {
             if (newOpt) {
                 Object.assign(this._.options, newOpt);
                 if (newOpt.spin !== undefined) {
-                    var p = this.autorotatePlugin;
-                    newOpt.spin ? p.start() : p.stop();
+                    var rotate = this.autorotatePlugin;
+                    newOpt.spin ? rotate.start() : rotate.stop();
                 }
                 this.svgDraw();
             }
@@ -550,7 +595,11 @@ var graticuleCanvas = function () {
     var _ = { style: {}, drawTo: null };
 
     function canvasAddGraticule() {
-        if (this._.options.showGraticule) {
+        var __ = this._;
+        if (__.options.showGraticule) {
+            if (__.options.transparent || __.options.transparentGraticule) {
+                __.proj.clipAngle(180);
+            }
             this.canvasPlugin.render(function (context, path) {
                 context.beginPath();
                 path(datumGraticule);
@@ -558,6 +607,7 @@ var graticuleCanvas = function () {
                 context.strokeStyle = _.style.line || 'rgba(119,119,119,0.4)';
                 context.stroke();
             }, _.drawTo);
+            __.proj.clipAngle(90);
         }
     }
 
@@ -565,6 +615,7 @@ var graticuleCanvas = function () {
         name: 'graticuleCanvas',
         onInit: function onInit() {
             this.$.canvasAddGraticule = canvasAddGraticule;
+            this._.options.transparentGraticule = false;
             this._.options.showGraticule = true;
         },
         onRefresh: function onRefresh() {
@@ -623,58 +674,71 @@ var graticulePlugin = function () {
 
 // Derek Watkins’s Block http://bl.ocks.org/dwtkns/4686432
 var fauxGlobePlugin = function () {
+    /*eslint no-console: 0 */
     var _ = { svg: null, q: null };
 
     function svgAddDropShadow() {
+        var __ = this._;
         _.svg.selectAll('#drop_shadow,.drop_shadow').remove();
-        if (this._.options.showGlobeShadow) {
-            var drop_shadow = this._.defs.append("radialGradient").attr("id", "drop_shadow").attr("cx", "50%").attr("cy", "50%");
+        if (__.options.showGlobeShadow) {
+            var drop_shadow = __.defs.append("radialGradient").attr("id", "drop_shadow").attr("cx", "50%").attr("cy", "50%");
             drop_shadow.append("stop").attr("offset", "20%").attr("stop-color", "#000").attr("stop-opacity", ".5");
             drop_shadow.append("stop").attr("offset", "100%").attr("stop-color", "#000").attr("stop-opacity", "0");
-            this._.dropShadow = _.svg.append("g").attr("class", "drop_shadow").append("ellipse").attr("cx", this._.center[0]).attr("cy", this._.options.height - 50).attr("rx", this._.proj.scale() * 0.90).attr("ry", this._.proj.scale() * 0.25).attr("class", "noclicks").style("fill", "url(#drop_shadow)");
-            this._.dropShadow;
+            __.dropShadow = _.svg.append("g").attr("class", "drop_shadow").append("ellipse").attr("cx", __.center[0]).attr("cy", __.options.height - 50).attr("rx", __.proj.scale() * 0.90).attr("ry", __.proj.scale() * 0.25).attr("class", "noclicks").style("fill", "url(#drop_shadow)");
+            __.dropShadow;
         }
     }
 
     function svgAddGlobeShading() {
+        var __ = this._;
         _.svg.selectAll('#shading,.shading').remove();
-        if (this._.options.showGlobeShading) {
-            var globe_shading = this._.defs.append("radialGradient").attr("id", "shading").attr("cx", "50%").attr("cy", "40%");
+        if (__.options.showGlobeShading) {
+            var globe_shading = __.defs.append("radialGradient").attr("id", "shading").attr("cx", "50%").attr("cy", "40%");
             globe_shading.append("stop").attr("offset", "50%").attr("stop-color", "#9ab").attr("stop-opacity", "0");
             globe_shading.append("stop").attr("offset", "100%").attr("stop-color", "#3e6184").attr("stop-opacity", "0.3");
-            this._.globeShading = _.svg.append("g").attr("class", "shading").append("circle").attr("cx", this._.center[0]).attr("cy", this._.center[1]).attr("r", this._.proj.scale()).attr("class", "noclicks").style("fill", "url(#shading)");
-            return this._.globeShading;
+            __.globeShading = _.svg.append("g").attr("class", "shading").append("circle").attr("cx", __.center[0]).attr("cy", __.center[1]).attr("r", __.proj.scale()).attr("class", "noclicks").style("fill", "url(#shading)");
+            return __.globeShading;
         }
     }
 
     function svgAddGlobeHilight() {
+        var __ = this._;
         _.svg.selectAll('#hilight,.hilight').remove();
-        if (this._.options.showGlobeHilight) {
-            var globe_highlight = this._.defs.append("radialGradient").attr("id", "hilight").attr("cx", "75%").attr("cy", "25%");
+        if (__.options.showGlobeHilight) {
+            var globe_highlight = __.defs.append("radialGradient").attr("id", "hilight").attr("cx", "75%").attr("cy", "25%");
             globe_highlight.append("stop").attr("offset", "5%").attr("stop-color", "#ffd").attr("stop-opacity", "0.6");
             globe_highlight.append("stop").attr("offset", "100%").attr("stop-color", "#ba9").attr("stop-opacity", "0.2");
-            this._.globeHilight = _.svg.append("g").attr("class", "hilight").append("circle").attr("cx", this._.center[0]).attr("cy", this._.center[1]).attr("r", this._.proj.scale()).attr("class", "noclicks").style("fill", "url(#hilight)");
-            return this._.globeHilight;
+            __.globeHilight = _.svg.append("g").attr("class", "hilight").append("circle").attr("cx", __.center[0]).attr("cy", __.center[1]).attr("r", __.proj.scale()).attr("class", "noclicks").style("fill", "url(#hilight)");
+            return __.globeHilight;
         }
     }
 
     return {
         name: 'fauxGlobePlugin',
         onInit: function onInit() {
-            this._.options.showGlobeShadow = true;
-            this._.options.showGlobeShading = true;
-            this._.options.showGlobeHilight = true;
+            var options = this._.options;
+
+            options.showGlobeShadow = true;
+            options.showGlobeShading = true;
+            options.showGlobeHilight = true;
             this.$.svgAddDropShadow = svgAddDropShadow;
             this.$.svgAddGlobeHilight = svgAddGlobeHilight;
             this.$.svgAddGlobeShading = svgAddGlobeShading;
             _.svg = this._.svg;
         },
         onResize: function onResize() {
-            if (this._.globeShading && this._.options.showGlobeShading) {
-                this._.globeShading.attr("r", this._.proj.scale());
+            var __ = this._;
+            var options = __.options;
+
+            var scale = __.proj.scale();
+            if (__.globeShading && options.showGlobeShading) {
+                __.globeShading.attr("r", scale);
             }
-            if (this._.globeHilight && this._.options.showGlobeHilight) {
-                this._.globeHilight.attr("r", this._.proj.scale());
+            if (__.globeHilight && options.showGlobeHilight) {
+                __.globeHilight.attr("r", scale);
+            }
+            if (__.dropShadow && options.showGlobeShadow) {
+                __.dropShadow.attr("cy", scale + 250).attr("rx", scale * 0.90).attr("ry", scale * 0.25);
             }
         },
         selectAll: function selectAll(q) {
@@ -690,14 +754,14 @@ var fauxGlobePlugin = function () {
 var autorotatePlugin = (function (degPerSec) {
     /*eslint no-console: 0 */
     var _ = {
-        lastTick: new Date(),
-        degree: degPerSec,
+        lastTick: new Date(), // d3.now(),
+        degree: degPerSec / 1000,
         sync: []
     };
 
     function rotate(delta) {
         var r = this._.proj.rotate();
-        r[0] += _.degree * delta / 1000;
+        r[0] += _.degree * delta;
         this._.rotate(r);
     }
 
@@ -707,20 +771,18 @@ var autorotatePlugin = (function (degPerSec) {
             this._.options.spin = true;
         },
         onInterval: function onInterval() {
-            var now = new Date();
-            if (!this._.options.spin || this._.drag) {
-                _.lastTick = now;
-            } else {
+            var now = new Date(); // d3.now();
+            if (this._.options.spin && !this._.drag) {
                 var delta = now - _.lastTick;
                 rotate.call(this, delta);
                 _.sync.forEach(function (g) {
                     return rotate.call(g, delta);
                 });
-                _.lastTick = now;
             }
+            _.lastTick = now;
         },
         speed: function speed(degPerSec) {
-            _.degree = degPerSec;
+            _.degree = degPerSec / 1000;
         },
         start: function start() {
             this._.options.spin = true;
@@ -735,8 +797,142 @@ var autorotatePlugin = (function (degPerSec) {
 });
 
 // KoGor’s Block http://bl.ocks.org/KoGor/5994804
-var countryTooltipPlugin = function () {
+var countrySelectCanvas = function () {
+    /*eslint no-debugger: 0 */
+    /*eslint no-console: 0 */
+    var _ = { countries: null, country: null, mouse: null, onHover: {}, onHoverKeys: [] };
+
+    // https://github.com/d3/d3-polygon
+    function polygonContains(polygon, point) {
+        var n = polygon.length;
+        var p = polygon[n - 1];
+        var x = point[0],
+            y = point[1];
+        var x0 = p[0],
+            y0 = p[1];
+        var x1, y1;
+        var inside = false;
+        for (var i = 0; i < n; ++i) {
+            p = polygon[i], x1 = p[0], y1 = p[1];
+            if (y1 > y !== y0 > y && x < (x0 - x1) * (y - y1) / (y0 - y1) + x1) inside = !inside;
+            x0 = x1, y0 = y1;
+        }
+        return inside;
+    }
+
+    return {
+        name: 'countrySelectCanvas',
+        onInit: function onInit() {
+            var __ = this._;
+            var worldCanvas = this.worldCanvas;
+
+            var _worldCanvas$data = worldCanvas.data(),
+                world = _worldCanvas$data.world;
+
+            if (world) {
+                _.countries = topojson.feature(world, world.objects.countries);
+            }
+            var mouseMoveHandler = function mouseMoveHandler() {
+                var _this = this;
+
+                var mouse = d3.mouse(this);
+                var pos = __.proj.invert(mouse);
+                _.country = _.countries.features.find(function (f) {
+                    return f.geometry.coordinates.find(function (c1) {
+                        return polygonContains(c1, pos) || c1.find(function (c2) {
+                            return polygonContains(c2, pos);
+                        });
+                    });
+                });
+                _.mouse = mouse;
+                _.onHoverKeys.forEach(function (k) {
+                    _.onHover[k].call(_this, _.mouse, _.country);
+                });
+            };
+            __.svg.on("mousemove", mouseMoveHandler);
+            if (this.versorDragPlugin) {
+                this.versorDragPlugin.onDrag({
+                    countrySelectCanvas: mouseMoveHandler
+                });
+            }
+        },
+        data: function data() {
+            return {
+                country: _.country,
+                mouse: _.mouse
+            };
+        },
+        onHover: function onHover(obj) {
+            Object.assign(_.onHover, obj);
+            _.onHoverKeys = Object.keys(_.onHover);
+        },
+        world: function world(w) {
+            _.countries = topojson.feature(w, w.objects.countries);
+        }
+    };
+};
+
+// KoGor’s Block http://bl.ocks.org/KoGor/5994804
+var countryTooltipCanvas = function () {
+    /*eslint no-debugger: 0 */
+    /*eslint no-console: 0 */
+    var _ = { show: false };
     var countryTooltip = d3.select("body").append("div").attr("class", "countryTooltip");
+
+    function refresh(mouse) {
+        return countryTooltip.style("left", mouse[0] + 7 + "px").style("top", mouse[1] - 15 + "px");
+    }
+
+    function hideTooltip() {
+        countryTooltip.style("opacity", 0).style("display", "none");
+    }
+
+    return {
+        name: 'countryTooltipCanvas',
+        onInit: function onInit() {
+            var _this = this;
+            var toolTipsHandler = function toolTipsHandler() {
+                var _this$countrySelectCa = _this.countrySelectCanvas.data(),
+                    country = _this$countrySelectCa.country,
+                    mouse = _this$countrySelectCa.mouse;
+
+                if (country) {
+                    var countryName = _this.worldCanvas.countryName(country);
+                    if (countryName) {
+                        refresh(mouse).style("display", "block").style("opacity", 1).text(countryName.name);
+                    } else {
+                        hideTooltip();
+                    }
+                } else {
+                    hideTooltip();
+                }
+            };
+            this.countrySelectCanvas.onHover({
+                countryTooltipCanvas: toolTipsHandler
+            });
+            if (this.versorDragPlugin) {
+                this.versorDragPlugin.onDrag({
+                    countryTooltipCanvas: toolTipsHandler
+                });
+            }
+        },
+        onRefresh: function onRefresh() {
+            if (this._.drag && _.show) {
+                refresh(this.versorDragPlugin.mouse());
+            }
+        }
+    };
+};
+
+// KoGor’s Block http://bl.ocks.org/KoGor/5994804
+var countryTooltipPlugin = function () {
+    /*eslint no-console: 0 */
+    var _ = { show: false };
+    var countryTooltip = d3.select("body").append("div").attr("class", "countryTooltip");
+
+    function refresh(mouse) {
+        return countryTooltip.style("left", mouse[0] + 7 + "px").style("top", mouse[1] - 15 + "px");
+    }
 
     return {
         name: 'countryTooltipPlugin',
@@ -745,14 +941,27 @@ var countryTooltipPlugin = function () {
             var originalsvgAddCountries = this.$.svgAddCountries;
             this.$.svgAddCountries = function () {
                 return originalsvgAddCountries.call(this).on("mouseover", function (d) {
-                    var country = _this.worldPlugin.countryName.call(_this, d);
-                    countryTooltip.text(country.name).style("left", d3.event.pageX + 7 + "px").style("top", d3.event.pageY - 15 + "px").style("display", "block").style("opacity", 1);
+                    if (!_this._.drag) {
+                        _.show = true;
+                        var country = _this.worldPlugin.countryName.call(_this, d);
+                        refresh(d3.mouse(this)).style("display", "block").style("opacity", 1).text(country.name);
+                    }
                 }).on("mouseout", function () {
-                    countryTooltip.style("opacity", 0).style("display", "none");
+                    if (!_this._.drag) {
+                        _.show = false;
+                        countryTooltip.style("opacity", 0).style("display", "none");
+                    }
                 }).on("mousemove", function () {
-                    countryTooltip.style("left", d3.event.pageX + 7 + "px").style("top", d3.event.pageY - 15 + "px");
+                    if (!_this._.drag) {
+                        refresh(d3.mouse(this));
+                    }
                 });
             };
+        },
+        onRefresh: function onRefresh() {
+            if (this._.drag && _.show) {
+                refresh(this.versorDragPlugin.mouse());
+            }
         }
     };
 };
@@ -881,15 +1090,36 @@ var worldCanvas = (function (urlWorld, urlCountryNames) {
     var _ = { world: null, countryNames: null, style: {}, drawTo: null, options: {} };
 
     function canvasAddWorldOrCountries() {
-        if (_.world && this._.options.showLand) {
-            canvasAddWorld.call(this);
-            if (!this._.drag) {
-                if (this._.options.showCountries) {
-                    canvasAddCountries.call(this);
-                }
-                if (this._.options.showLakes) {
+        var __ = this._;
+        if (_.world && __.options.showLand) {
+            if (!__.drag && __.options.transparent || __.options.transparentWorld) {
+                __.proj.clipAngle(180);
+                this.canvasPlugin.render(function (context, path) {
+                    context.beginPath();
+                    path(_.land);
+                    context.fillStyle = _.style.backLand || 'rgba(119,119,119,0.2)';
+                    context.fill();
+                }, _.drawTo, _.options);
+                __.proj.clipAngle(90);
+            }
+            if (!__.drag && __.options.showCountries) {
+                canvasAddCountries.call(this);
+                if (__.options.showLakes) {
                     canvasAddLakes.call(this);
                 }
+            } else {
+                canvasAddWorld.call(this);
+            }
+            if (this.countrySelectCanvas) {
+                var _countrySelectCanvas$ = this.countrySelectCanvas.data(),
+                    country = _countrySelectCanvas$.country;
+
+                this.canvasPlugin.render(function (context, path) {
+                    context.beginPath();
+                    path(country);
+                    context.fillStyle = 'rgba(117, 0, 0, 0.4)';
+                    context.fill();
+                });
             }
         }
     }
@@ -908,7 +1138,9 @@ var worldCanvas = (function (urlWorld, urlCountryNames) {
             context.beginPath();
             path(_.countries);
             context.lineWidth = 0.5;
+            context.fillStyle = _.style.land || 'rgba(117, 87, 57, 0.4)';
             context.strokeStyle = _.style.countries || 'rgba(80, 64, 39, 0.6)';
+            context.fill();
             context.stroke();
         }, _.drawTo, _.options);
     }
@@ -937,9 +1169,11 @@ var worldCanvas = (function (urlWorld, urlCountryNames) {
             this.worldCanvas.data({ world: world, countryNames: countryNames });
         },
         onInit: function onInit() {
-            this._.options.showLand = true;
-            this._.options.showLakes = true;
-            this._.options.showCountries = true;
+            var options = this._.options;
+            options.showLand = true;
+            options.showLakes = true;
+            options.showCountries = true;
+            options.transparentWorld = false;
             this.$.canvasAddWorldOrCountries = canvasAddWorldOrCountries;
         },
         onRefresh: function onRefresh() {
@@ -957,6 +1191,15 @@ var worldCanvas = (function (urlWorld, urlCountryNames) {
                 world: _.world,
                 countryNames: _.countryNames
             };
+        },
+        countryName: function countryName(d) {
+            var cname = '';
+            if (_.countryNames) {
+                cname = _.countryNames.find(function (x) {
+                    return x.id == d.id;
+                });
+            }
+            return cname;
         },
         style: function style(s) {
             if (s) {
@@ -1129,6 +1372,7 @@ var worldThreejs = function () {
 
 // KoGor’s Block http://bl.ocks.org/KoGor/5994804
 var centerPlugin = (function () {
+    /*eslint no-console: 0 */
     var _ = { focused: null, svgAddCountriesOld: null };
 
     function country(cnt, id) {
@@ -1144,7 +1388,7 @@ var centerPlugin = (function () {
         var _this2 = this;
 
         d3.transition().duration(2500).tween("rotate", function () {
-            var r = d3.interpolate(_this2._.proj.rotate(), [-p[0], -p[1]]);
+            var r = d3.interpolate(_this2._.proj.rotate(), [-p[0], -p[1], 0]);
             return function (t) {
                 _this2._.rotate(r(t));
             };
@@ -1155,13 +1399,15 @@ var centerPlugin = (function () {
         var _this = this;
         var countries = _.svgAddCountriesOld.call(this);
         countries.on("click", function () {
-            var id = this.id.replace('x', '');
-            var c = _this.worldPlugin.countries();
-            var focusedCountry = country(c, id);
-            var p = d3.geoCentroid(focusedCountry);
-            transition.call(_this, p);
-            if (typeof _.focused === 'function') {
-                _.focused.call(_this);
+            if (_this._.options.enableCenter) {
+                var id = this.id.replace('x', '');
+                var c = _this.worldPlugin.countries();
+                var focusedCountry = country(c, id);
+                var p = d3.geoCentroid(focusedCountry);
+                transition.call(_this, p);
+                if (typeof _.focused === 'function') {
+                    _.focused.call(_this);
+                }
             }
         });
         return countries;
@@ -1172,6 +1418,7 @@ var centerPlugin = (function () {
         onInit: function onInit() {
             _.svgAddCountriesOld = this.$.svgAddCountries;
             this.$.svgAddCountries = svgAddCountries;
+            this._.options.enableCenter = true;
         },
         go: function go(id) {
             var c = this.worldPlugin.countries();
@@ -1186,63 +1433,88 @@ var centerPlugin = (function () {
 });
 
 var flattenPlugin = function () {
-    var _ = { proj: null };
+    /*eslint no-console: 0 */
+    var _ = {};
+
+    function animation() {
+        var _this = this;
+        return _this._.svg.transition().duration(10500).tween("projection", function () {
+            return function (_x) {
+                animation.alpha(_x);
+                _this._.refresh();
+            };
+        });
+    }
+
+    function interpolatedProjection(a, b) {
+        var px = d3.geoProjection(raw).scale(1);
+        var alpha = void 0;
+
+        function raw(lamda, pi) {
+            var pa = a([lamda *= 180 / Math.PI, pi *= 180 / Math.PI]),
+                pb = b([lamda, pi]);
+            return [(1 - alpha) * pa[0] + alpha * pb[0], (alpha - 1) * pa[1] - alpha * pb[1]];
+        }
+
+        animation.alpha = function (_x) {
+            if (!arguments.length) {
+                return alpha;
+            }
+            alpha = +_x;
+            var ca = a.center(),
+                cb = b.center(),
+                ta = a.translate(),
+                tb = b.translate();
+            px.center([(1 - alpha) * ca[0] + alpha * cb[0], (1 - alpha) * ca[1] + alpha * cb[1]]);
+            px.translate([(1 - alpha) * ta[0] + alpha * tb[0], (1 - alpha) * ta[1] + alpha * tb[1]]);
+            return px;
+        };
+        animation.alpha(0);
+        return px;
+    }
+
+    //Rotate to default before animation
+    function defaultRotate() {
+        var __ = this._;
+        return d3.transition().duration(1500).tween("rotate", function () {
+            __.rotate(__.proj.rotate());
+            var r = d3.interpolate(__.proj.rotate(), [0, 0, 0]);
+            return function (t) {
+                __.rotate(r(t));
+            };
+        });
+    }
 
     return {
         name: 'flattenPlugin',
         onInit: function onInit() {
-            var _this = this;
-
-            function animation() {
-                _this._.svg.transition().duration(10500).tween("projection", function () {
-                    return function (_x) {
-                        animation.alpha(_x);
-                        _this._.refresh();
-                    };
-                });
-            }
-
-            function interpolatedProjection(a, b) {
-                var px = d3.geoProjection(raw).scale(1);
-                var alpha = void 0;
-
-                function raw(lamda, pi) {
-                    var pa = a([lamda *= 180 / Math.PI, pi *= 180 / Math.PI]),
-                        pb = b([lamda, pi]);
-                    return [(1 - alpha) * pa[0] + alpha * pb[0], (alpha - 1) * pa[1] - alpha * pb[1]];
-                }
-
-                animation.alpha = function (_x) {
-                    if (!arguments.length) return alpha;
-                    var ta = a.translate(),
-                        tb = b.translate();
-                    alpha = +_x;
-                    tb[0] = ta[0];
-                    tb[1] = ta[1] / 1.2;
-                    // console.log(px.rotate(), _x);
-                    px.translate([(1 - alpha) * ta[0] + alpha * tb[0], (1 - alpha) * ta[1] + alpha * tb[1]]);
-                    return px;
-                };
-                animation.alpha(0);
-                return px;
-            }
-
             var g1 = this._.proj;
-            var g2 = d3.geoEquirectangular().scale(this._.options.width / 7).translate(this._.center);
-            _.proj = interpolatedProjection(g1, g2);
-            // _.proj.center([0,0]);
-            this._.animation = animation;
-            this._.px = _.proj;
-            this._.g1 = g1;
-            this._.g2 = g2;
+            var g2 = d3.geoEquirectangular().scale(this._.options.width / 6.3).translate(this._.center);
+            _.g1 = g1;
+            _.g2 = g2;
         },
         toMap: function toMap() {
-            // const r = this._.proj.rotate();
-            this._.path = d3.geoPath().projection(_.proj);
-            // this._.proj.rotate([r[0],0,0]);
-            // this._.proj.center([0,0]);
-            this.svgDraw();
-            this._.animation.call(this);
+            var _this2 = this;
+
+            defaultRotate.call(this).on('end', function () {
+                var proj = interpolatedProjection(_.g1, _.g2);
+                _this2._.path = d3.geoPath().projection(proj);
+                animation.call(_this2).on('end', function () {
+                    _this2._.options.enableCenter = false;
+                });
+            });
+        },
+        toGlobe: function toGlobe() {
+            var _this3 = this;
+
+            this._.rotate([0, 0, 0]);
+            var proj = interpolatedProjection(_.g2, _.g1);
+            this._.path = d3.geoPath().projection(proj);
+            animation.call(this).on('end', function () {
+                _this3._.path = d3.geoPath().projection(_this3._.proj);
+                _this3._.options.enableCenter = true;
+                _this3._.refresh();
+            });
         }
     };
 };
@@ -1252,39 +1524,41 @@ var barPlugin = (function (urlBars) {
     var _ = { svg: null, barProjection: null, q: null, bars: null };
 
     function svgAddBar() {
+        var __ = this._;
         _.svg.selectAll('.bar').remove();
-        if (_.bars && this._.options.showBars) {
+        if (_.bars && __.options.showBars) {
             var gBar = _.svg.append("g").attr("class", "bar");
             var mask = gBar.append("mask").attr("id", "edge");
             mask.append("rect").attr("x", 0).attr("y", 0).attr("width", "100%").attr("height", "100%").attr("fill", "white");
             mask.append("use").attr("xlink:href", "#edgeCircle").attr("fill", "black");
-            this._.mask = mask;
+            __.mask = mask;
 
             _.max = d3.max(_.bars.features, function (d) {
-                return parseInt(d.properties.mag);
+                return parseInt(d.geometry.value);
             });
 
-            var scale = this._.proj.scale();
+            var scale = __.proj.scale();
             _.lengthScale = d3.scaleLinear().domain([0, _.max]).range([scale, scale + 50]);
 
-            this._.bar = gBar.selectAll("line").data(_.bars.features).enter().append("line").attr("stroke", "red").attr("stroke-width", "2").attr("data-index", function (d, i) {
+            __.bar = gBar.selectAll("line").data(_.bars.features).enter().append("line").attr("stroke", "red").attr("stroke-width", "2").attr("data-index", function (d, i) {
                 return i;
             });
             // render to correct position
             refresh.call(this);
-            return this._.bar;
+            return __.bar;
         }
     }
 
     function refresh() {
-        if (_.bars && this._.options.showBars) {
-            var proj1 = this._.proj;
+        var __ = this._;
+        if (_.bars && __.options.showBars) {
+            var proj1 = __.proj;
             var scale = _.lengthScale;
             var proj2 = _.barProjection;
-            var center = proj1.invert(this._.center);
-            this._.bar.each(function (d) {
+            var center = proj1.invert(__.center);
+            __.bar.each(function (d) {
                 var arr = d.geometry.coordinates;
-                proj2.scale(scale(d.properties.mag));
+                proj2.scale(scale(d.geometry.value));
                 var distance = d3.geoDistance(arr, center);
                 var d1 = proj1(arr);
                 var d2 = proj2(arr);
@@ -1294,9 +1568,9 @@ var barPlugin = (function (urlBars) {
     }
 
     function svgClipPath() {
-        // mask creation
-        this._.defs.selectAll('clipPath').remove();
-        this._.defs.append("clipPath").append("circle").attr("id", "edgeCircle").attr("cx", this._.center[0]).attr("cy", this._.center[1]).attr("r", this._.proj.scale());
+        var __ = this._;
+        __.defs.selectAll('clipPath').remove();
+        __.defs.append("clipPath").append("circle").attr("id", "edgeCircle").attr("cx", __.center[0]).attr("cy", __.center[1]).attr("r", __.proj.scale());
     }
 
     return {
@@ -1311,11 +1585,12 @@ var barPlugin = (function (urlBars) {
             }, 1);
         },
         onInit: function onInit() {
+            var __ = this._;
             this.$.svgAddBar = svgAddBar;
             this.$.svgClipPath = svgClipPath;
             this._.options.showBars = true;
-            _.barProjection = this._.orthoGraphic();
-            _.svg = this._.svg;
+            _.barProjection = __.orthoGraphic();
+            _.svg = __.svg;
             svgClipPath.call(this);
         },
         onResize: function onResize() {
@@ -1347,30 +1622,46 @@ var dotsPlugin = function () {
     var _ = { dataDots: null };
 
     function svgAddDots() {
-        if (_.dataDots && this._.options.showDots && !this._.drag) {
-            this._.svg.selectAll('.dot').remove();
-            if (_.dataDots && this._.options.showDots) {
-                this._.dots = this._.svg.append("g").attr("class", "dot").selectAll('circle').data(_.dataDots.features).enter().append('circle').attr('r', 2).attr('stroke', '#F00').style('opacity', 0.75);
+        var __ = this._;
+        if (_.dataDots && __.options.showDots && !__.drag) {
+            __.svg.selectAll('.dot').remove();
+            if (_.dataDots && __.options.showDots) {
+                var circles = [];
+                _.circles.forEach(function (d) {
+                    circles.push(d.circle);
+                });
+                __.dots = __.svg.append('g').attr('class', 'dot').selectAll('path').data(circles).enter().append('path');
+                if (_.dataDots.geometry) {
+                    var _g = _.dataDots.geometry;
+                    _g.lineWidth && __.dots.style('stroke-width', _g.lineWidth);
+                    _g.fillStyle && __.dots.style('fill', _g.fillStyle);
+                    _g.strokeStyle && __.dots.style('stroke', _g.strokeStyle);
+                }
                 refresh.call(this);
-                return this._.dots;
+                return __.dots;
             }
         }
     }
 
     function refresh() {
-        if (this._.drag == null) {
-            this._.dots.style("display", 'none');
-        } else if (!this._.drag && this._.dots && this._.options.showDots) {
-            var proj = this._.proj;
-            var center = this._.proj.invert(this._.center);
-            this._.dots.attr('cx', function (d) {
-                return proj(d.geometry.coordinates)[0];
-            }).attr('cy', function (d) {
-                return proj(d.geometry.coordinates)[1];
-            }).style("display", function (d) {
-                return d3.geoDistance(d.geometry.coordinates, center) > 1.57 ? 'none' : 'inline';
+        var __ = this._;
+        if (__.dots && __.options.showDots) {
+            __.dots.attr('d', __.path).style('display', function (d) {
+                return d3.geoDistance(d.coordinates, __.proj.invert(__.center)) > 1.57 ? 'none' : 'inline';
             });
         }
+    }
+
+    function initData() {
+        var geoCircle = d3.geoCircle();
+        var _g = _.dataDots.geometry || {};
+        var _r = _g.radius || 0.5;
+        _.circles = _.dataDots.features.map(function (d) {
+            var coordinates = d.geometry.coordinates;
+            var r = d.geometry.radius || _r;
+            var circle = geoCircle.center(coordinates).radius(r)();
+            return { coordinates: coordinates, circle: circle };
+        });
     }
 
     return {
@@ -1384,29 +1675,48 @@ var dotsPlugin = function () {
         },
         data: function data(_data) {
             _.dataDots = _data;
+            initData();
         }
     };
 };
 
 var dotsCanvas = function () {
-    var _ = { dataDots: null };
+    var _ = { dataDots: null, circles: [] };
 
     function canvasAddDots() {
-        if (_.dataDots && this._.options.showDots && !this._.drag) {
+        if (_.dataDots && this._.options.showDots) {
+            var circles = [];
             var proj = this._.proj;
+            var _g = _.dataDots.geometry || {};
             var center = proj.invert(this._.center);
-            this.canvasPlugin.render(function (context) {
-                _.dataDots.features.forEach(function (d) {
-                    if (d3.geoDistance(d.geometry.coordinates, center) <= 1.57) {
-                        context.beginPath();
-                        context.fillStyle = '#F00';
-                        context.arc(proj(d.geometry.coordinates)[0], proj(d.geometry.coordinates)[1], 2, 0, 2 * Math.PI);
-                        context.fill();
-                        context.closePath();
+            this.canvasPlugin.render(function (context, path) {
+                _.circles.forEach(function (d) {
+                    if (d3.geoDistance(d.coordinates, center) <= 1.57) {
+                        circles.push(d.circle);
                     }
                 });
+                context.beginPath();
+                path({ type: 'GeometryCollection', geometries: circles });
+                context.lineWidth = _g.lineWidth || 0.2;
+                context.fillStyle = _g.fillStyle || 'rgba(100,0,0,.4)';
+                context.strokeStyle = _g.strokeStyle || 'rgba(100,0,0,.6)';
+                context.fill();
+                context.stroke();
+                context.closePath();
             }, _.drawTo);
         }
+    }
+
+    function initData() {
+        var geoCircle = d3.geoCircle();
+        var _g = _.dataDots.geometry || {};
+        var _r = _g.radius || 0.5;
+        _.circles = _.dataDots.features.map(function (d) {
+            var coordinates = d.geometry.coordinates;
+            var r = d.geometry.radius || _r;
+            var circle = geoCircle.center(coordinates).radius(r)();
+            return { coordinates: coordinates, circle: circle };
+        });
     }
 
     return {
@@ -1420,6 +1730,7 @@ var dotsCanvas = function () {
         },
         data: function data(_data) {
             _.dataDots = _data;
+            initData();
         },
         drawTo: function drawTo(arr) {
             _.drawTo = arr;
@@ -1678,6 +1989,8 @@ earthjs$1.plugins = {
     graticulePlugin: graticulePlugin,
     fauxGlobePlugin: fauxGlobePlugin,
     autorotatePlugin: autorotatePlugin,
+    countrySelectCanvas: countrySelectCanvas,
+    countryTooltipCanvas: countryTooltipCanvas,
     countryTooltipPlugin: countryTooltipPlugin,
     barTooltipPlugin: barTooltipPlugin,
     placesPlugin: placesPlugin,
