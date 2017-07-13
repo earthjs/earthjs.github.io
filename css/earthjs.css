@@ -1,7 +1,7 @@
 body {
     margin: 0;
 }
-#earth, #three-js,.canvas,.top {
+#earth, .earth, #three-js, .earth, .canvas, .top {
     position: absolute;
     left: 0;
     top: 0;
@@ -12,7 +12,7 @@ body {
 #earth {
     z-index: 2;
 }
-.canvas,.top {
+.earth, .canvas, .top {
     /*position: relative;*/
     z-index: 3;
 }
@@ -25,9 +25,9 @@ body {
     stroke-opacity: 1;
 }
 .countries path {
-    stroke: rgb(80, 64, 39);
+    stroke: rgb(239, 237, 234);
     stroke-linejoin: round;
-    stroke-width: 1.5;
+    stroke-width: 0.1;
     fill: rgb(117, 87, 57);
     opacity: 1;
 }
@@ -49,12 +49,17 @@ body {
     stroke: black;
     stroke-width: 0.5;
 }
+.dot path {
+    fill: rgba(100,0,0,.4);
+    stroke: rgba(100,0,0,.6);
+    stroke-width: 0.2;
+}
 .labels {
     font: 8px sans-serif;
     fill: black;
     opacity: .5;
 }
-.noclicks {
+.earth, .noclicks {
     pointer-events:none;
 }
 .point{
@@ -62,7 +67,8 @@ body {
     fill: #A80;
 }
 .countryTooltip,
-.barTooltip {
+.barTooltip,
+.dotTooltip {
     background: #fff;
     border: solid #ccc 1px;
     color: #666;
@@ -75,8 +81,12 @@ body {
     text-align: left;
     z-index: 3;
 }
-.set-options {
+.set-options, .set-options2 {
+    display: inline-block;
     position: absolute;
     z-index: 999;
-    top: 25px;
+    /*top: 25px;*/
+}
+.set-options2 {
+    z-index: 998;
 }

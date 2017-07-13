@@ -14,22 +14,26 @@ const eQuakeApp = () => {
             _.world = world;
             _.equake = equake;
             this.eQuakeApp.mag(5);
+            this.hoverCanvas.world(world);
             this.countrySelectCanvas.world(world);
             this.worldCanvas.data({world, countryNames});
         },
         onInit() {
             this.register(earthjs.plugins.commonPlugins());
+            this.register(earthjs.plugins.hoverCanvas());
             this.register(earthjs.plugins.pingsCanvas());
             this.register(earthjs.plugins.dotsCanvas());
-            this.register(earthjs.plugins.barPlugin());
-            this.register(earthjs.plugins.barTooltipPlugin());
+            this.register(earthjs.plugins.barSvg());
+            this.register(earthjs.plugins.barTooltipSvg());
             this.register(earthjs.plugins.countrySelectCanvas());
             this.register(earthjs.plugins.countryTooltipCanvas());
+            this.dotsCanvas.drawTo([1]);
+            this.pingsCanvas.drawTo([1]);
             this.commonPlugins.addChecker('showPings:Pings:showPings'.split(':'));
             this.commonPlugins.addChecker('showBars:Bars:showBars'.split(':'));
             this.commonPlugins.addChecker('showDots:Dots:showDots'.split(':'));
-            var tt = this.barTooltipPlugin;
-            this.barTooltipPlugin.onShow = function(d) {
+            var tt = this.barTooltipSvg;
+            tt.onShow = function(d) {
                 var {mag, tsunami, eventtime, place, detail} = d.properties;
                 if (!eventtime) {
                     d3.json(detail, function(error, data) {
@@ -59,10 +63,10 @@ const eQuakeApp = () => {
                     strokeStyle: 'rgba(100,0,0,.6)'
                 }
             }
-            this.barPlugin.data(dataMssg);
+            this.barSvg.data(dataMssg);
             this.dotsCanvas.data(dataMssg);
             this.pingsCanvas.data(dataMssg);
-            this.svgDraw();
+            this.create();
         },
     }
 }
