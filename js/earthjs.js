@@ -78,7 +78,7 @@ var earthjs$1 = function earthjs() {
     clearInterval(earthjs.ticker);
     options = Object.assign({
         transparent: false,
-        select: '#earth',
+        selectAll: '#earth',
         rotate: 130
     }, options);
     var _ = {
@@ -110,7 +110,7 @@ var earthjs$1 = function earthjs() {
     };
     window.__ = _;
     var drag = false;
-    var svg = d3.selectAll(options.select);
+    var svg = d3.selectAll(options.selectAll);
     var width = svg.attr('width'),
         height = svg.attr('height');
     if (!width || !height) {
@@ -290,7 +290,11 @@ var earthjs$1 = function earthjs() {
     };
 
     __.orthoGraphic = function () {
-        return d3.geoOrthographic().rotate([__.options.rotate, 0]).scale(__.options.width / 3.5).translate(__.center).precision(0.1).clipAngle(90);
+        var r = __.options.rotate;
+        if (typeof r === 'number') {
+            __.options.rotate = __.options.transparent ? [r, -33, -11] : [r, 0, 0];
+        }
+        return d3.geoOrthographic().rotate(__.options.rotate).scale(__.options.width / 3.5).translate(__.center).precision(0.1).clipAngle(90);
     };
 
     __.proj = __.orthoGraphic();
@@ -394,16 +398,27 @@ var mousePlugin = function () {
         // console.log('dblclick');
     }
 
-    function dragSetup() {
+    function init() {
         var __ = this._;
         var versor = __.versor;
-        _.svg.call(d3.drag().on('start', dragstarted).on('end', dragsended).on('drag', dragged));
-
         var v0 = void 0,
             // Mouse position in Cartesian coordinates at start of drag gesture.
         r0 = void 0,
             // Projection rotation as Euler angles at start.
         q0 = void 0; // Projection rotation as versor at start.
+        var s0 = __.proj.scale();
+        var wh = [__.options.width, __.options.height];
+
+        _.svg.call(d3.drag().on('start', dragstarted).on('end', dragsended).on('drag', dragged));
+
+        _.svg.call(d3.zoom().on("zoom", zoom).scaleExtent([0.1, 5]).translateExtent([[0, 0], wh]));
+
+        function zoom() {
+            var t = d3.event.transform;
+            __.proj.scale(s0 * t.k);
+            __.resize();
+            __.refresh();
+        }
 
         function rotate(r) {
             var d = r[0] - r0[0];
@@ -469,7 +484,7 @@ var mousePlugin = function () {
         name: 'mousePlugin',
         onInit: function onInit() {
             _.svg = this._.svg;
-            dragSetup.call(this);
+            init.call(this);
         },
         onInterval: function onInterval() {
             var _this = this;
@@ -490,9 +505,10 @@ var mousePlugin = function () {
         selectAll: function selectAll(q) {
             if (q) {
                 _.q = q;
+                _.svg.call(d3.zoom().on("zoom start end", null));
                 _.svg.call(d3.drag().on('start', null).on('end', null).on('drag', null));
                 _.svg = d3.selectAll(q);
-                dragSetup.call(this);
+                init.call(this);
             }
             return _.svg;
         },
@@ -522,11 +538,10 @@ var zoomPlugin = (function () {
         var __ = this._;
         var s0 = __.proj.scale();
         var wh = [__.options.width, __.options.height];
-        var zoom = d3.zoom().on("zoom start end", zoomed).scaleExtent([0.1, 5]).translateExtent([[0, 0], wh]);
 
-        __.svg.call(zoom);
+        __.svg.call(d3.zoom().on("zoom start end", zoom).scaleExtent([0.1, 5]).translateExtent([[0, 0], wh]));
 
-        function zoomed() {
+        function zoom() {
             var t = d3.event.transform;
             __.proj.scale(s0 * t.k);
             __.resize();
@@ -2369,11 +2384,13 @@ var dotsSvg = (function (urlDots) {
             var _g = _.dataDots.geometry || {};
             if (__.options.transparent || __.options.transparentDots) {
                 __.proj.clipAngle(180);
-                $.dots.style('display', 'inline');
                 $.dots.style('fill', function (d, i) {
                     coordinate = d.coordinates[0][i];
                     gdistance = d3.geoDistance(coordinate, __.proj.invert(__.center));
                     return gdistance > 1.57 ? 'none' : _g.fillStyle || 'rgba(100,0,0,.4)';
+                });
+                $.dots.style('display', function () {
+                    return __.drag ? 'none' : 'inline';
                 });
                 $.dots.attr('d', __.path);
                 __.proj.clipAngle(90);
@@ -2381,7 +2398,7 @@ var dotsSvg = (function (urlDots) {
                 $.dots.style('display', function (d, i) {
                     coordinate = d.coordinates[0][i];
                     gdistance = d3.geoDistance(coordinate, __.proj.invert(__.center));
-                    return gdistance > 1.57 ? 'none' : 'inline';
+                    return gdistance > 1.57 || __.drag ? 'none' : 'inline';
                 });
                 $.dots.style('fill', _g.fillStyle || 'rgba(100,0,0,.4)');
                 $.dots.attr('d', __.path);
@@ -2777,7 +2794,7 @@ var commonPlugins = (function (urlWorld, urlCountryNames) {
         r(p.configPlugin());
         r(p.autorotatePlugin(10));
         r(p.mousePlugin());
-        r(p.zoomPlugin());
+        // r(p.zoomPlugin());
         r(p.dropShadowSvg());
         r(p.oceanSvg());
         r(p.canvasPlugin());
