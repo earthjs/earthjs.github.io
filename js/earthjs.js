@@ -79,7 +79,7 @@ var earthjs$1 = function earthjs() {
     options = Object.assign({
         transparent: false,
         selectAll: '#earth',
-        rotate: 130
+        rotate: [130, -33, -11]
     }, options);
     var _ = {
         onCreate: {},
@@ -292,7 +292,7 @@ var earthjs$1 = function earthjs() {
     __.orthoGraphic = function () {
         var r = __.options.rotate;
         if (typeof r === 'number') {
-            __.options.rotate = __.options.transparent ? [r, -33, -11] : [r, 0, 0];
+            __.options.rotate = [r, -33, -11];
         }
         return d3.geoOrthographic().rotate(__.options.rotate).scale(__.options.width / 3.5).translate(__.center).precision(0.1).clipAngle(90);
     };
@@ -674,6 +674,28 @@ var canvasPlugin = (function () {
                     proj.rotate(r);
                 }
             }
+        },
+        flipRender: function flipRender(fn, drawTo) {
+            var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : [];
+
+            // __.proj.clipAngle(180);
+            // this.canvasPlugin.render(function(context, path) {
+            //     fn.call(this, context, path);
+            // }, _.drawTo, _.options);
+            // __.proj.clipAngle(90);
+            var __ = this._;
+            var w = __.center[0];
+            var r = __.proj.rotate();
+            this.canvasPlugin.render(function (context, path) {
+                context.save();
+                context.translate(w, 0);
+                context.scale(-1, 1);
+                context.translate(-w, 0);
+                __.proj.rotate([r[0] + 180, -r[1], -r[2]]);
+                fn.call(this, context, path);
+                context.restore();
+                __.proj.rotate(r);
+            }, drawTo, options);
         }
     };
 });
@@ -1055,8 +1077,8 @@ var graticuleCanvas = function () {
             this.canvasPlugin.render(function (context, path) {
                 context.beginPath();
                 path(datumGraticule);
-                context.lineWidth = 0.3;
-                context.strokeStyle = _.style.line || 'rgba(119,119,119,0.4)';
+                context.lineWidth = 0.4;
+                context.strokeStyle = _.style.line || 'rgba(119,119,119,0.6)';
                 context.stroke();
             }, _.drawTo);
             if (__.options.transparent || __.options.transparentGraticule) {
@@ -1716,14 +1738,12 @@ var worldCanvas = (function (urlWorld, urlCountryNames) {
         var __ = this._;
         if (_.world && __.options.showLand) {
             if (__.options.transparent || __.options.transparentLand) {
-                __.proj.clipAngle(180);
-                this.canvasPlugin.render(function (context, path) {
+                this.canvasPlugin.flipRender(function (context, path) {
                     context.beginPath();
                     path(_.land);
                     context.fillStyle = _.style.backLand || 'rgba(119,119,119,0.2)';
                     context.fill();
                 }, _.drawTo, _.options);
-                __.proj.clipAngle(90);
             }
             __.options.showCountries ? canvasAddCountries.call(this) : canvasAddWorld.call(this);
             if (!__.drag) {
@@ -2478,6 +2498,88 @@ var dotsSvg = (function (urlDots) {
     };
 });
 
+var pinCanvas = (function (urlJson, urlImage) {
+    var wh = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : [15, 25];
+
+    var _ = { dataPin: null, image: null, w: null, h: null };
+    d3.select('body').append('img').attr('src', urlImage).attr('id', 'pin').attr('width', '0').attr('height', '0');
+    _.image = document.getElementById('pin');
+
+    function init(wh) {
+        var sc = this._.proj.scale();
+        _.w = d3.scaleLinear().domain([0, sc]).range([0, wh[0]]);
+        _.h = d3.scaleLinear().domain([0, sc]).range([0, wh[1]]);
+        resize.call(this);
+    }
+
+    function create() {
+        if (this._.options.showPin) {
+            var __ = this._;
+            var center = __.proj.invert(__.center);
+            this.canvasPlugin.render(function (context) {
+                _.dataPin.features.forEach(function (d) {
+                    var coordinates = d.geometry.coordinates;
+                    if (d3.geoDistance(coordinates, center) <= 1.57) {
+                        var a = __.path.centroid(d);
+                        context.drawImage(_.image, a[0] - _.pX, a[1] - _.pY, _.wh[0], _.wh[1]);
+                    }
+                });
+            }, _.drawTo);
+        }
+    }
+
+    function resize() {
+        var __ = this._;
+        var sc = __.proj.scale();
+        var wh = [_.w(sc), _.h(sc)];
+        _.wh = wh;
+        _.pX = wh[0] / 2;
+        _.pY = wh[1];
+    }
+
+    return {
+        name: 'pinCanvas',
+        urls: urlJson && [urlJson],
+        onReady: function onReady(err, json) {
+            this.pinCanvas.data(json);
+        },
+        onInit: function onInit() {
+            this._.options.showPin = true;
+            init.call(this, wh);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onResize: function onResize() {
+            resize.call(this);
+        },
+        onRefresh: function onRefresh() {
+            create.call(this);
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.dataPin = _data;
+            } else {
+                return _.dataPin;
+            }
+        },
+        drawTo: function drawTo(arr) {
+            _.drawTo = arr;
+        },
+        image: function image() {
+            return _.image;
+        },
+        size: function size(wh) {
+            if (wh) {
+                _.wh = wh;
+                init.call(this, wh);
+            } else {
+                return _.wh;
+            }
+        }
+    };
+});
+
 var dotsCanvas = (function (urlJson) {
     /*eslint no-console: 0 */
     var _ = { dataDots: null, dots: [], radiusPath: null };
@@ -2498,16 +2600,13 @@ var dotsCanvas = (function (urlJson) {
                 }
             });
             if (__.options.transparent || __.options.transparentDots) {
-                __.proj.clipAngle(180);
-                this.canvasPlugin.render(function (context, path) {
+                this.canvasPlugin.flipRender(function (context, path) {
                     context.beginPath();
                     path({ type: 'GeometryCollection', geometries: dots1 });
                     context.lineWidth = 0.2;
                     context.strokeStyle = 'rgba(119,119,119,.4)';
                     context.stroke();
-                    context.closePath();
                 }, _.drawTo);
-                __.proj.clipAngle(90);
             }
             this.canvasPlugin.render(function (context, path) {
                 context.beginPath();
@@ -2517,7 +2616,6 @@ var dotsCanvas = (function (urlJson) {
                 context.strokeStyle = _g.strokeStyle || 'rgba(100,0,0,.6)';
                 context.fill();
                 context.stroke();
-                context.closePath();
             }, _.drawTo);
         }
     }
@@ -2921,6 +3019,7 @@ earthjs$1.plugins = {
     flattenPlugin: flattenPlugin,
     barSvg: barSvg,
     dotsSvg: dotsSvg,
+    pinCanvas: pinCanvas,
     dotsCanvas: dotsCanvas,
     pingsCanvas: pingsCanvas,
     pingsSvg: pingsSvg,
