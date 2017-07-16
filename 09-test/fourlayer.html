@@ -1,0 +1,94 @@
+<html>
+<head>
+    <style media="screen">
+        .input-area {
+            position: absolute;
+            z-index: 5;
+        }
+        .x3 {
+            z-index: 4;
+        }
+    </style>
+    <link type="text/css" rel="stylesheet" href="./css/earthjs.css">
+    <script type='text/javascript' src="./js/d3.min.js"></script>
+    <script type='text/javascript' src="./js/topojson.min.js"></script>
+    <script type='text/javascript' src='../dist/earthjs.js'></script>
+</head>
+<body>
+    <div class="input-area">
+        <input id="pan" type="range" min="0" max="400" step="1" value="0"/><br/>
+        <input id="ocn" type="range" min="0" max="20" step="1" value="0"/><br/>
+        <input id="tg1" type="checkbox"/><label for="tg1">Swap Canvas</label><br/>
+        <input id="tg2" type="checkbox"/><label for="tg2">Swap SVG</label>
+    </div>
+    <svg id="earth" class="x0"></svg>
+    <canvas class="canvas x1"></canvas>
+    <canvas class="canvas x2"></canvas>
+    <svg class="noclicks earth x3" width="700" height="500"></svg>
+    <script>
+        const g = earthjs();
+        g.register(earthjs.plugins.configPlugin());
+        g.register(earthjs.plugins.autorotatePlugin(10));
+        g.register(earthjs.plugins.mousePlugin());
+        g.register(earthjs.plugins.dropShadowSvg());
+        g.register(earthjs.plugins.oceanSvg());
+        g.register(earthjs.plugins.canvasPlugin());
+        g.register(earthjs.plugins.graticuleCanvas());
+        g.register(earthjs.plugins.fauxGlobeSvg());
+        g.register(earthjs.plugins.worldCanvas('./d/world-110m.json'));
+        g.register(earthjs.plugins.barSvg('./d/bars.json'));
+
+        g.graticuleCanvas.style({line: 'rgba(119,119,119, 1)'});
+        g.worldCanvas.style({land: 'rgba(117, 87, 57, 1)'});
+
+        g.canvasPlugin.selectAll('canvas');
+        g.graticuleCanvas.drawTo([1]);
+        g.worldCanvas.drawTo([0]);
+        g.fauxGlobeSvg.selectAll('.x3');
+        g.barSvg.selectAll('.x3');
+        g.barSvg.ready = function(err, json) {
+            json.features.forEach(d => d.geometry.value = d.properties.mag);
+            g.barSvg.data(json);
+        };
+
+        g.ready(function(){
+            g.create();
+        });
+        const canvas = d3.selectAll('canvas').nodes();
+        const svg2 = d3.selectAll('.x3').nodes();
+        d3.select('#pan').on('input', function() {
+            // canvas[0].style.top  = this.value;
+            canvas[0].style.left = this.value;
+            // canvas[1].style.top  = this.value*2;
+            canvas[1].style.left = this.value*2;
+            // svg2[0].style.top    = this.value*3;
+            svg2[0].style.left   = this.value*3;
+        })
+        d3.select('#ocn').on('input', function() {
+            g.oceanSvg.scale(-this.value);
+        })
+        d3.select('#tg1').on('click', function() {
+            if (this.checked) {
+                g.graticuleCanvas.drawTo([0]);
+                g.worldCanvas.drawTo([1]);
+            } else {
+                g.graticuleCanvas.drawTo([1]);
+                g.worldCanvas.drawTo([0]);
+            }
+        })
+        d3.select('#tg2').on('click', function() {
+            if (this.checked) {
+                g.oceanSvg.selectAll('.x3');
+                g.fauxGlobeSvg.selectAll('.x0');
+                g.barSvg.selectAll('.x0');
+            } else {
+                g.oceanSvg.selectAll('.x0');
+                g.fauxGlobeSvg.selectAll('.x3');
+                g.barSvg.selectAll('.x3');
+            }
+            d3.selectAll('svg g').remove();
+            g.create();
+        })
+    </script>
+</body>
+</html>
