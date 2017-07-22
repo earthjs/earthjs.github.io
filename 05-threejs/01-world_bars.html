@@ -33,14 +33,16 @@
     <svg class="ej-svg" width="700" height="500"></svg>
     <script>
         const g = earthjs({rotate:[0,0,0]})
-        .register(earthjs.plugins.autorotatePlugin())
-        .register(earthjs.plugins.canvasPlugin())
         .register(earthjs.plugins.mousePlugin())
+        .register(earthjs.plugins.canvasPlugin())
+        .register(earthjs.plugins.configPlugin())
+        .register(earthjs.plugins.autorotatePlugin())
         .register(earthjs.plugins.hoverCanvas())
         .register(earthjs.plugins.threejsPlugin())
         .register(earthjs.plugins.dropShadowSvg())
         .register(earthjs.plugins.graticuleThreejs())
         .register(earthjs.plugins.worldThreejs('../d/world.png'))
+        // .register(earthjs.plugins.worldThreejs('../d/world-110m.json'))
         .register(earthjs.plugins.dotsCanvas('../d/bars.json'))
         .register(earthjs.plugins.oceanSvg())
         .register(earthjs.plugins.dotSelectCanvas())
