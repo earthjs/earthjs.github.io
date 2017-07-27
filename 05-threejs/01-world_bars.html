@@ -9,9 +9,9 @@
     </style>
     <link type="text/css" rel="stylesheet" href="../css/earthjs.css">
     <script type='text/javascript' src="../js/d3.min.js"></script>
+    <script type='text/javascript' src='../js/three.min.js'></script>
     <script type='text/javascript' src="../js/topojson.min.js"></script>
     <script type='text/javascript' src='../js/earthjs.js'></script>
-    <script type='text/javascript' src='../js/three.min.js'></script>
     <style>
         #earth-js, #earth-js2 {
             position: absolute;
@@ -36,14 +36,17 @@
         .register(earthjs.plugins.mousePlugin())
         .register(earthjs.plugins.canvasPlugin())
         .register(earthjs.plugins.configPlugin())
-        .register(earthjs.plugins.autorotatePlugin())
+        // .register(earthjs.plugins.autorotatePlugin())
         .register(earthjs.plugins.hoverCanvas())
         .register(earthjs.plugins.threejsPlugin())
         .register(earthjs.plugins.dropShadowSvg())
-        .register(earthjs.plugins.graticuleThreejs())
-        .register(earthjs.plugins.worldThreejs('../d/world.png'))
-        // .register(earthjs.plugins.worldThreejs('../d/world-110m.json'))
+        // .register(earthjs.plugins.graticuleThreejs())
+        .register(earthjs.plugins.worldThreejs('../d/world-110m.json')) //../d/world.png
+        // .register(earthjs.plugins.imageThreejs('../d/world.png'))
+        .register(earthjs.plugins.imageThreejs('../d/graticule.svg'))
         .register(earthjs.plugins.dotsCanvas('../d/bars.json'))
+        //https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson
+        .register(earthjs.plugins.dotsThreejs())
         .register(earthjs.plugins.oceanSvg())
         .register(earthjs.plugins.dotSelectCanvas())
         .register(earthjs.plugins.dotTooltipCanvas())
@@ -56,6 +59,7 @@
         g.dotsCanvas.ready = function(err, json) {
             json.features.forEach(d => d.geometry.value = d.properties.mag);
             json.geometry = {radius: 2}
+            g.dotsThreejs.data(json);
             g.dotsCanvas.data(json);
             g.barSvg.data(json);
         };

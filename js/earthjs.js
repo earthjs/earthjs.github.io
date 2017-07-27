@@ -83,19 +83,15 @@ var earthjs$1 = function earthjs() {
     }, options);
     var _ = {
         onCreate: {},
-        onCreateKeys: [],
         onCreateVals: [],
 
         onRefresh: {},
-        onRefreshKeys: [],
         onRefreshVals: [],
 
         onResize: {},
-        onResizeKeys: [],
         onResizeVals: [],
 
         onInterval: {},
-        onIntervalKeys: [],
         onIntervalVals: [],
 
         ready: null,
@@ -211,6 +207,11 @@ var earthjs$1 = function earthjs() {
             return globe;
         }
     };
+    Object.defineProperty(globe, 'loading', {
+        get: function get() {
+            return _.loadingData;
+        }
+    });
 
     //----------------------------------------
     var earths = [];
@@ -235,10 +236,12 @@ var earthjs$1 = function earthjs() {
         intervalTicker = intervalTicker || 50;
         ticker = setInterval(function () {
             // 33% less CPU compare with d3.timer
-            interval.call(globe);
-            earths.forEach(function (p) {
-                p._.interval.call(p);
-            });
+            if (!_.loadingData) {
+                interval.call(globe);
+                earths.forEach(function (p) {
+                    p._.interval.call(p);
+                });
+            }
         }, intervalTicker);
         earthjs.ticker = ticker;
         return globe;
@@ -305,7 +308,9 @@ var earthjs$1 = function earthjs() {
         if (obj[qname]) {
             _[qname][obj.name] = obj[qname];
             _[qname + 'Keys'] = Object.keys(_[qname]);
-            _[qname + 'Vals'] = Object.values(_[qname]);
+            _[qname + 'Vals'] = _[qname + 'Keys'].map(function (k) {
+                return _[qname][k];
+            });
         }
     }
 };
@@ -388,23 +393,26 @@ var mousePlugin = (function () {
     /*eslint no-console: 0 */
     var _ = { svg: null, q: null, sync: [], mouse: null, wait: null,
         onDrag: {},
-        onDragKeys: [],
+        onDragVals: [],
         onClick: {},
-        onClickKeys: [],
+        onClickVals: [],
         onDblClick: {},
-        onDblClickKeys: []
+        onDblClickVals: []
     };
+    if (zoomScale === undefined) {
+        zoomScale = [0, 1000];
+    }
 
     function onclick() {
-        _.onClickKeys.forEach(function (k) {
-            _.onClick[k].call(_._this, _.event, _.mouse);
+        _.onClickVals.forEach(function (v) {
+            v.call(_._this, _.event, _.mouse);
         });
         console.log('onClick');
     }
 
     function ondblclick() {
-        _.onDblClickKeys.forEach(function (k) {
-            _.onDblClick[k].call(_._this, _.event, _.mouse);
+        _.onDblClickVals.forEach(function (v) {
+            v.call(_._this, _.event, _.mouse);
         });
         console.log('onDblClick');
     }
@@ -427,8 +435,8 @@ var mousePlugin = (function () {
 
         r(__);
         __.rotate(_.r);
-        _.onDragKeys.forEach(function (k) {
-            _.onDrag[k].call(_this, _.mouse);
+        _.onDragVals.forEach(function (v) {
+            v.call(_this, _.mouse);
         });
     }
 
@@ -502,8 +510,8 @@ var mousePlugin = (function () {
             } else if (__.drag) {
                 r(__);
                 __.rotate(_.r);
-                _.onDragKeys.forEach(function (k) {
-                    _.onDrag[k].call(_._this, _.mouse);
+                _.onDragVals.forEach(function (v) {
+                    v.call(_._this, _.mouse);
                 });
                 _.sync.forEach(function (g) {
                     return rotate.call(g, _.r);
@@ -554,15 +562,21 @@ var mousePlugin = (function () {
         },
         onDrag: function onDrag(obj) {
             Object.assign(_.onDrag, obj);
-            _.onDragKeys = Object.keys(_.onDrag);
+            _.onDragVals = Object.keys(_.onDrag).map(function (k) {
+                return _.onDrag[k];
+            });
         },
         onClick: function onClick(obj) {
             Object.assign(_.onClick, obj);
-            _.onClickKeys = Object.keys(_.onClick);
+            _.onClickVals = Object.keys(_.onClick).map(function (k) {
+                return _.onClick[k];
+            });
         },
         onDblClick: function onDblClick(obj) {
             Object.assign(_.onDblClick, obj);
-            _.onDblClickKeys = Object.keys(_.onDblClick);
+            _.onDblClickVals = Object.keys(_.onDblClick).map(function (k) {
+                return _.onDblClick[k];
+            });
         }
     };
 });
@@ -593,16 +607,18 @@ var zoomPlugin = (function () {
 
 // Philippe Rivière’s https://bl.ocks.org/Fil/9ed0567b68501ee3c3fef6fbe3c81564
 // https://gist.github.com/Fil/ad107bae48e0b88014a0e3575fe1ba64
+// http://bl.ocks.org/kenpenn/16a9c611417ffbfc6129
 var threejsPlugin = (function () {
     var threejs = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'three-js';
 
     /*eslint no-console: 0 */
+    /*eslint no-debugger: 0 */
     var _ = { renderer: null, scene: null, camera: null, radius: null };
     _.scale = d3.scaleLinear().domain([0, 200]).range([0, 1]);
 
     // Converts a point [longitude, latitude] in degrees to a THREE.Vector3.
     // Axes have been rotated so Three's "y" axis is parallel to the North Pole
-    function vertex(point) {
+    function _vertex(point) {
         var lambda = point[0] * Math.PI / 180,
             phi = point[1] * Math.PI / 180,
             cosPhi = Math.cos(phi);
@@ -613,7 +629,7 @@ var threejsPlugin = (function () {
     function _wireframe(multilinestring, material) {
         var geometry = new THREE.Geometry();
         multilinestring.coordinates.forEach(function (line) {
-            d3.pairs(line.map(vertex), function (a, b) {
+            d3.pairs(line.map(_vertex), function (a, b) {
                 geometry.vertices.push(a, b);
             });
         });
@@ -697,6 +713,9 @@ var threejsPlugin = (function () {
         },
         rotate: function rotate(obj) {
             _rotate.call(this, obj);
+        },
+        vertex: function vertex(point) {
+            return _vertex(point);
         },
         wireframe: function wireframe(multilinestring, material) {
             return _wireframe(multilinestring, material);
@@ -824,9 +843,9 @@ var hoverCanvas = (function () {
         country: null,
         countries: null,
         onCircle: {},
-        onCircleKeys: [],
+        onCircleVals: [],
         onCountry: {},
-        onCountryKeys: []
+        onCountryVals: []
     };
 
     function init() {
@@ -856,16 +875,16 @@ var hoverCanvas = (function () {
             _.mouse = mouse;
             _.country = null;
             if (__.options.showDots) {
-                _.onCircleKeys.forEach(function (k) {
-                    _.dot = _.onCircle[k].call(_this, _.mouse, pos);
+                _.onCircleVals.forEach(function (v) {
+                    _.dot = v.call(_this, _.mouse, pos);
                 });
             }
             if (__.options.showLand && _.countries && !_.dot) {
                 if (!__.drag) {
                     _.country = findCountry(pos);
                 }
-                _.onCountryKeys.forEach(function (k) {
-                    _.onCountry[k].call(_this, _.mouse, _.country);
+                _.onCountryVals.forEach(function (v) {
+                    v.call(_this, _.mouse, _.country);
                 });
             }
         };
@@ -894,11 +913,15 @@ var hoverCanvas = (function () {
         },
         onCircle: function onCircle(obj) {
             Object.assign(_.onCircle, obj);
-            _.onCircleKeys = Object.keys(_.onCircle);
+            _.onCircleVals = Object.keys(_.onCircle).map(function (k) {
+                return _.onCircle[k];
+            });
         },
         onCountry: function onCountry(obj) {
             Object.assign(_.onCountry, obj);
-            _.onCountryKeys = Object.keys(_.onCountry);
+            _.onCountryVals = Object.keys(_.onCountry).map(function (k) {
+                return _.onCountry[k];
+            });
         },
         data: function data(_data) {
             if (_data) {
@@ -927,9 +950,9 @@ var clickCanvas = (function () {
         country: null,
         countries: null,
         onCircle: {},
-        onCircleKeys: [],
+        onCircleVals: [],
         onCountry: {},
-        onCountryKeys: []
+        onCountryVals: []
     };
 
     function init() {
@@ -956,16 +979,16 @@ var clickCanvas = (function () {
             _.mouse = xmouse;
             _.country = null;
             if (__.options.showDots) {
-                _.onCircleKeys.forEach(function (k) {
-                    _.dot = _.onCircle[k].call(_this, _.mouse, pos);
+                _.onCircleVals.forEach(function (v) {
+                    _.dot = v.call(_this, _.mouse, pos);
                 });
             }
             if (__.options.showLand && !_.dot) {
                 if (!__.drag) {
                     _.country = findCountry(pos);
                 }
-                _.onCountryKeys.forEach(function (k) {
-                    _.onCountry[k].call(_this, _.mouse, _.country);
+                _.onCountryVals.forEach(function (v) {
+                    v.call(_this, _.mouse, _.country);
                 });
             }
         };
@@ -993,11 +1016,15 @@ var clickCanvas = (function () {
         },
         onCircle: function onCircle(obj) {
             Object.assign(_.onCircle, obj);
-            _.onCircleKeys = Object.keys(_.onCircle);
+            _.onCircleVals = Object.keys(_.onCircle).map(function (k) {
+                return _.onCircle[k];
+            });
         },
         onCountry: function onCountry(obj) {
             Object.assign(_.onCountry, obj);
-            _.onCountryKeys = Object.keys(_.onCountry);
+            _.onCountryVals = Object.keys(_.onCountry).map(function (k) {
+                return _.onCountry[k];
+            });
         },
         data: function data(_data) {
             if (_data) {
@@ -1026,9 +1053,9 @@ var dblClickCanvas = (function () {
         country: null,
         countries: null,
         onCircle: {},
-        onCircleKeys: [],
+        onCircleVals: [],
         onCountry: {},
-        onCountryKeys: []
+        onCountryVals: []
     };
 
     function findCountry(pos) {
@@ -1065,16 +1092,16 @@ var dblClickCanvas = (function () {
             _.mouse = xmouse;
             _.country = null;
             if (__.options.showDots) {
-                _.onCircleKeys.forEach(function (k) {
-                    _.dot = _.onCircle[k].call(_this, _.mouse, pos);
+                _.onCircleVals.forEach(function (v) {
+                    _.dot = v.call(_this, _.mouse, pos);
                 });
             }
             if (__.options.showLand && !_.dot) {
                 if (!__.drag) {
                     _.country = findCountry(pos);
                 }
-                _.onCountryKeys.forEach(function (k) {
-                    _.onCountry[k].call(_this, _.mouse, _.country);
+                _.onCountryVals.forEach(function (v) {
+                    v.call(_this, _.mouse, _.country);
                 });
             }
         };
@@ -1092,11 +1119,15 @@ var dblClickCanvas = (function () {
         },
         onCircle: function onCircle(obj) {
             Object.assign(_.onCircle, obj);
-            _.onCircleKeys = Object.keys(_.onCircle);
+            _.onCircleVals = Object.keys(_.onCircle).map(function (k) {
+                return _.onCircle[k];
+            });
         },
         onCountry: function onCountry(obj) {
             Object.assign(_.onCountry, obj);
-            _.onCountryKeys = Object.keys(_.onCountry);
+            _.onCountryVals = Object.keys(_.onCountry).map(function (k) {
+                return _.onCountry[k];
+            });
         },
         data: function data(_data) {
             if (_data) {
@@ -1113,6 +1144,129 @@ var dblClickCanvas = (function () {
                 mouse: _.mouse,
                 country: _.country
             };
+        }
+    };
+});
+
+// http://davidscottlyons.com/threejs/presentations/frontporch14/offline-extended.html#slide-79
+var canvasThreejs = (function (worldUrl) {
+    /*eslint no-console: 0 */
+    /*eslint no-debugger: 0 */
+    var _ = {
+        sphereObject: null,
+        onDraw: {},
+        onDrawVals: []
+    };
+    var canvas = d3.select("body").append("canvas").style("display", "none").attr("width", "1024px").attr("height", "512px");
+    var context = canvas.node().getContext("2d");
+    var texture = new THREE.Texture(canvas.node());
+    var geometry = new THREE.SphereGeometry(200, 30, 30);
+    var material = new THREE.MeshBasicMaterial({ transparent: true });
+    var projection = d3.geoEquirectangular().precision(0.5).translate([512, 256]).scale(163);
+    var path = d3.geoPath().projection(projection).context(context);
+    material.map = texture;
+
+    function init() {
+        this._.options.showTjCanvas = true;
+    }
+
+    function create() {
+        var _this = this;
+
+        var tj = this.threejsPlugin;
+        if (!_.sphereObject) {
+            _.sphereObject = new THREE.Mesh(geometry, material);
+        }
+        context.clearRect(0, 0, 1024, 512);
+        context.fillStyle = "#aaa";
+        context.beginPath();
+        path(_.countries);
+        context.fill();
+
+        _.onDrawVals.forEach(function (v) {
+            v.call(_this, context, path);
+        });
+        texture.needsUpdate = true;
+        _.sphereObject.visible = this._.options.showTjCanvas;
+        tj.addGroup(_.sphereObject);
+        tj.rotate();
+    }
+
+    return {
+        name: 'canvasThreejs',
+        urls: worldUrl && [worldUrl],
+        onReady: function onReady(err, data) {
+            this.canvasThreejs.data(data);
+        },
+        onInit: function onInit() {
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onRefresh: function onRefresh() {
+            _.sphereObject.visible = this._.options.showTjCanvas;
+        },
+        onDraw: function onDraw(obj) {
+            Object.assign(_.onDraw, obj);
+            _.onDrawVals = Object.keys(_.onDraw).map(function (k) {
+                return _.onDraw[k];
+            });
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.world = _data;
+                _.countries = topojson.feature(_data, _data.objects.countries);
+            } else {
+                return _.world;
+            }
+        }
+    };
+});
+
+// http://davidscottlyons.com/threejs/presentations/frontporch14/offline-extended.html#slide-79
+var oceanThreejs = (function () {
+    /*eslint no-console: 0 */
+    var _ = { sphereObject: null };
+
+    function create() {
+        var tj = this.threejsPlugin;
+        if (!_.sphereObject) {
+            var geometry = new THREE.SphereGeometry(200, 30, 30);
+            var material = new THREE.MeshNormalMaterial({
+                transparent: true,
+                wireframe: false,
+                opacity: 0.8
+            });
+            // var material = new THREE.MeshPhongMaterial( {
+            //     shading: THREE.SmoothShading, //FlatShading,
+            //     transparent: true,
+            //     wireframe: false,
+            //     color: 0x3794cf, //0xff0000,
+            //     shininess: 40,
+            //     opacity: 0.8,
+            //     // polygonOffset: true,
+            //     // polygonOffsetFactor: 1, // positive value pushes polygon further away
+            //     // polygonOffsetUnits: 1
+            // });
+
+            _.sphereObject = new THREE.Mesh(geometry, material);
+            _.sphereObject.visible = this._.options.showOcean;
+        }
+        tj.addGroup(_.sphereObject);
+        tj.rotate();
+    }
+
+    return {
+        name: 'oceanThreejs',
+        onInit: function onInit() {
+            this._.options.showOcean = true;
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onRefresh: function onRefresh() {
+            _.sphereObject.visible = this._.options.showOcean;
         }
     };
 });
@@ -1247,6 +1401,87 @@ var sphereSvg = (function () {
     };
 });
 
+// https://bl.ocks.org/mbostock/2b85250396c17a79155302f91ec21224
+// https://bl.ocks.org/pbogden/2f8d2409f1b3746a1c90305a1a80d183
+// http://www.svgdiscovery.com/ThreeJS/Examples/17_three.js-D3-graticule.htm
+var textureThreejs = (function () {
+    /*eslint no-console: 0 */
+    var _ = {};
+    var geometry = new THREE.SphereGeometry(200, 30, 30);
+    var material = new THREE.MeshBasicMaterial();
+    var datumGraticule = d3.geoGraticule()();
+
+    function init() {
+        this._.options.showDrawing = true;
+        //http://bl.ocks.org/MAKIO135/eab7b74e85ed2be48eeb
+        var __ = this._;
+        var width = __.options.width;
+        var height = __.options.height;
+        var canvas = d3.select('body').append('canvas');
+        canvas.attr('height', height).attr('width', width);
+        _.canvas = canvas.node();
+        _.context = _.canvas.getContext("2d");
+        _.texture = new THREE.Texture(_.canvas);
+        _.canvas.width = _.canvas.height = 512;
+        _.texture.needsUpdate = true;
+        material.map = _.texture;
+
+        var projection = d3.geoMercator().scale(width / 2 / Math.PI).translate([width / 2, height / 2]).precision(0.5);
+
+        _.path = d3.geoPath(projection, _.context);
+
+        // var geometry = new THREE.BoxGeometry( 200, 200, 200 );
+        // _.context.clearRect(0, 0, width, height);
+
+        // _.context.font = '20pt Arial';
+        // _.context.fillStyle = 'red';
+        // _.context.fillRect(0, 0, _.canvas.width, _.canvas.height);
+        // _.context.fillStyle = 'white';
+        // _.context.fillRect(10, 10, _.canvas.width - 20, _.canvas.height - 20);
+        // _.context.fillStyle = 'black';
+        // _.context.textAlign = "center";
+        // _.context.textBaseline = "middle";
+        // _.context.fillText(new Date().getTime(), _.canvas.width / 2, _.canvas.height / 2);
+    }
+
+    function create() {
+        var __ = this._;
+        var tj = this.threejsPlugin;
+        var width = __.options.width;
+        var height = __.options.height;
+        if (!_.sphereObject) {
+            _.context.fillStyle = 'white';
+            _.context.fillRect(0, 0, width, height);
+            _.context.beginPath();
+            _.path(datumGraticule);
+            _.context.lineWidth = 0.4;
+            _.context.strokeStyle = 'rgba(119,119,119,0.6)';
+            _.context.stroke();
+            _.sphereObject = new THREE.Mesh(geometry, material);
+            _.sphereObject.visible = this._.options.showLand;
+            _.texture.needsUpdate = false;
+            // const material = new THREE.LineBasicMaterial({color: 0xaaaaaa});
+            // _.sphereObject = tj.wireframe(_.graticule10, material); //0x800000
+            // _.sphereObject.visible = this._.options.showDrawing;
+        }
+        tj.addGroup(_.sphereObject);
+        tj.rotate();
+    }
+
+    return {
+        name: 'textureThreejs',
+        onInit: function onInit() {
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onRefresh: function onRefresh() {
+            _.graticule.visible = this._.options.showDrawing;
+        }
+    };
+});
+
 var graticuleCanvas = (function () {
     var datumGraticule = d3.geoGraticule()();
     var _ = { style: {}, drawTo: null };
@@ -1304,7 +1539,7 @@ var graticuleCanvas = (function () {
 // http://www.svgdiscovery.com/ThreeJS/Examples/17_three.js-D3-graticule.htm
 var graticuleThreejs = (function () {
     /*eslint no-console: 0 */
-    var _ = { graticule: null };
+    var _ = { sphereObject: null };
 
     function init() {
         this._.options.showGraticule = true;
@@ -1361,10 +1596,12 @@ var graticuleThreejs = (function () {
 
     function create() {
         var tj = this.threejsPlugin;
-        var material = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
-        _.graticule = tj.wireframe(_.graticule10, material); //0x800000
-        _.graticule.visible = this._.options.showGraticule;
-        tj.addGroup(_.graticule);
+        if (!_.sphereObject) {
+            var material = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
+            _.sphereObject = tj.wireframe(_.graticule10, material); //0x800000
+            _.sphereObject.visible = this._.options.showGraticule;
+        }
+        tj.addGroup(_.sphereObject);
         tj.rotate();
     }
 
@@ -1377,7 +1614,7 @@ var graticuleThreejs = (function () {
             create.call(this);
         },
         onRefresh: function onRefresh() {
-            _.graticule.visible = this._.options.showGraticule;
+            _.sphereObject.visible = this._.options.showGraticule;
         }
     };
 });
@@ -1643,11 +1880,11 @@ var dotSelectCanvas = (function () {
     /*eslint no-console: 0 */
     var _ = { dataDots: null, dots: null, radiusPath: null,
         onHover: {},
-        onHoverKeys: [],
+        onHoverVals: [],
         onClick: {},
-        onClickKeys: [],
+        onClickVals: [],
         onDblClick: {},
-        onDblClickKeys: []
+        onDblClickVals: []
     };
 
     function detect(mouse, pos) {
@@ -1669,8 +1906,8 @@ var dotSelectCanvas = (function () {
         if (this.hoverCanvas) {
             var hoverHandler = function hoverHandler(mouse, pos) {
                 var dot = detect(mouse, pos);
-                _.onHoverKeys.forEach(function (k) {
-                    _.onHover[k].call(_this, mouse, dot);
+                _.onHoverVals.forEach(function (v) {
+                    v.call(_this, mouse, dot);
                 });
                 return dot;
             };
@@ -1682,8 +1919,8 @@ var dotSelectCanvas = (function () {
         if (this.clickCanvas) {
             var clickHandler = function clickHandler(mouse, pos) {
                 var dot = detect(mouse, pos);
-                _.onClickKeys.forEach(function (k) {
-                    _.onClick[k].call(_this, mouse, dot);
+                _.onClickVals.forEach(function (v) {
+                    v.call(_this, mouse, dot);
                 });
                 return dot;
             };
@@ -1695,8 +1932,8 @@ var dotSelectCanvas = (function () {
         if (this.dblClickCanvas) {
             var dblClickHandler = function dblClickHandler(mouse, pos) {
                 var dot = detect(mouse, pos);
-                _.onDblClickKeys.forEach(function (k) {
-                    _.onDblClick[k].call(_this, mouse, dot);
+                _.onDblClickVals.forEach(function (v) {
+                    v.call(_this, mouse, dot);
                 });
                 return dot;
             };
@@ -1718,15 +1955,21 @@ var dotSelectCanvas = (function () {
         },
         onHover: function onHover(obj) {
             Object.assign(_.onHover, obj);
-            _.onHoverKeys = Object.keys(_.onHover);
+            _.onHoverVals = Object.keys(_.onHover).map(function (k) {
+                return _.onHover[k];
+            });
         },
         onClick: function onClick(obj) {
             Object.assign(_.onClick, obj);
-            _.onClickKeys = Object.keys(_.onClick);
+            _.onClickVals = Object.keys(_.onClick).map(function (k) {
+                return _.onClick[k];
+            });
         },
         onDblClick: function onDblClick(obj) {
             Object.assign(_.onDblClick, obj);
-            _.onDblClickKeys = Object.keys(_.onDblClick);
+            _.onDblClickVals = Object.keys(_.onDblClick).map(function (k) {
+                return _.onDblClick[k];
+            });
         },
         dots: function dots(_dots) {
             _.dots = _dots;
@@ -1775,11 +2018,11 @@ var countrySelectCanvas = (function () {
     /*eslint no-console: 0 */
     var _ = { countries: null,
         onHover: {},
-        onHoverKeys: [],
+        onHoverVals: [],
         onClick: {},
-        onClickKeys: [],
+        onClickVals: [],
         onDblClick: {},
-        onDblClickKeys: []
+        onDblClickVals: []
     };
 
     function init() {
@@ -1787,8 +2030,8 @@ var countrySelectCanvas = (function () {
 
         if (this.hoverCanvas) {
             var hoverHandler = function hoverHandler(mouse, country) {
-                _.onHoverKeys.forEach(function (k) {
-                    _.onHover[k].call(_this, mouse, country);
+                _.onHoverVals.forEach(function (v) {
+                    v.call(_this, mouse, country);
                 });
                 return country;
             };
@@ -1799,8 +2042,8 @@ var countrySelectCanvas = (function () {
 
         if (this.clickCanvas) {
             var clickHandler = function clickHandler(mouse, country) {
-                _.onClickKeys.forEach(function (k) {
-                    _.onClick[k].call(_this, mouse, country);
+                _.onClickVals.forEach(function (v) {
+                    v.call(_this, mouse, country);
                 });
                 return country;
             };
@@ -1811,8 +2054,8 @@ var countrySelectCanvas = (function () {
 
         if (this.dblClickCanvas) {
             var dblClickHandler = function dblClickHandler(mouse, country) {
-                _.onDblClickKeys.forEach(function (k) {
-                    _.onDblClick[k].call(_this, mouse, country);
+                _.onDblClickVals.forEach(function (v) {
+                    v.call(_this, mouse, country);
                 });
                 return country;
             };
@@ -1842,15 +2085,21 @@ var countrySelectCanvas = (function () {
         },
         onHover: function onHover(obj) {
             Object.assign(_.onHover, obj);
-            _.onHoverKeys = Object.keys(_.onHover);
+            _.onHoverVals = Object.keys(_.onHover).map(function (k) {
+                return _.onHover[k];
+            });
         },
         onClick: function onClick(obj) {
             Object.assign(_.onClick, obj);
-            _.onClickKeys = Object.keys(_.onClick);
+            _.onClickVals = Object.keys(_.onClick).map(function (k) {
+                return _.onClick[k];
+            });
         },
         onDblClick: function onDblClick(obj) {
             Object.assign(_.onDblClick, obj);
-            _.onDblClickKeys = Object.keys(_.onDblClick);
+            _.onDblClickVals = Object.keys(_.onDblClick).map(function (k) {
+                return _.onDblClick[k];
+            });
         },
         data: function data(_data) {
             if (_data) {
@@ -2424,59 +2673,42 @@ var worldSvg = (function (worldUrl) {
 });
 
 var worldThreejs = (function () {
-    var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.png';
+    var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.png';
 
     /*eslint no-console: 0 */
-    var ext = imgUrl.split('.').pop();
-    if (ext === 'geojson') {
-        ext = 'json';
-    }
-    var _ = { sphereObject: null, scale: null, ext: ext };
+    var _ = { sphereObject: null };
 
     function create() {
-        if (!_.sphereObject) {
-            if (_.ext === 'json') {
-                worldFromTopojson.call(this);
-            } else {
-                worldFromImage.call(this);
-            }
-        } else {
-            var tj = this.threejsPlugin;
-            tj.addGroup(_.sphereObject);
-        }
-    }
-
-    function worldFromTopojson() {
         var tj = this.threejsPlugin;
-        var material = new THREE.LineBasicMaterial({ color: 0xff0000 });
-        _.sphereObject = tj.wireframe(topojson.mesh(_.world, _.world.objects.land), material);
-        _.sphereObject.visible = this._.options.showLand;
+        if (!_.sphereObject) {
+            var mesh = topojson.mesh(_.world, _.world.objects.countries);
+            var material = new THREE.MeshBasicMaterial({
+                // side: THREE.DoubleSide,
+                color: 0x707070 });
+            // material
+            // var material = new THREE.MeshPhongMaterial( {
+            //     color: 0xff0000,
+            //     shading: THREE.FlatShading,
+            //     polygonOffset: true,
+            //     polygonOffsetFactor: 1, // positive value pushes polygon further away
+            //     polygonOffsetUnits: 1
+            // });
+            _.sphereObject = tj.wireframe(mesh, material);
+            _.sphereObject.visible = this._.options.showLand;
+        }
+        // if (this.world3d) {
+        //     const s = _.sphereObject.scale;
+        //     s.x = 1.03;
+        //     s.y = 1.03;
+        //     s.z = 1.03;
+        // }
         tj.addGroup(_.sphereObject);
         tj.rotate();
     }
 
-    function worldFromImage() {
-        var __ = this._;
-        var tj = this.threejsPlugin;
-        var loader = new THREE.TextureLoader();
-        loader.load(imgUrl, function (texture) {
-            var geometry = new THREE.SphereGeometry(200, 30, 30);
-            var material = new THREE.MeshBasicMaterial({
-                map: texture,
-                overdraw: 0.5,
-                opacity: 0
-            });
-            material.opacity = 1;
-            _.sphereObject = new THREE.Mesh(geometry, material);
-            _.sphereObject.visible = __.options.showLand;
-            tj.addGroup(_.sphereObject);
-            tj.rotate();
-        });
-    }
-
     return {
         name: 'worldThreejs',
-        urls: _.ext === 'json' && [imgUrl],
+        urls: worldUrl && [worldUrl],
         onReady: function onReady(err, data) {
             this.worldThreejs.data(data);
         },
@@ -2495,6 +2727,57 @@ var worldThreejs = (function () {
             } else {
                 return _.world;
             }
+        },
+        sphere: function sphere() {
+            return _.sphereObject;
+        }
+    };
+});
+
+var imageThreejs = (function () {
+    var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.png';
+
+    /*eslint no-console: 0 */
+    var _ = { sphereObject: null };
+
+    function create() {
+        var tj = this.threejsPlugin;
+        if (!_.sphereObject) {
+            var _this = this;
+            var loader = new THREE.TextureLoader();
+            loader.load(imgUrl, function (map) {
+                var geometry = new THREE.SphereGeometry(200, 30, 30);
+                var material = new THREE.MeshBasicMaterial({ map: map });
+                _.sphereObject = new THREE.Mesh(geometry, material);
+                _.sphereObject.visible = _this._.options.showImage;
+                tj.addGroup(_.sphereObject);
+                tj.rotate();
+            });
+        } else {
+            tj.addGroup(_.sphereObject);
+            tj.rotate();
+        }
+    }
+
+    function refresh() {
+        if (_.sphereObject) {
+            _.sphereObject.visible = this._.options.showImage;
+        }
+    }
+
+    return {
+        name: 'imageThreejs',
+        onInit: function onInit() {
+            this._.options.showImage = true;
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onRefresh: function onRefresh() {
+            refresh.call(this);
+        },
+        sphere: function sphere() {
+            return _.sphereObject;
         }
     };
 });
@@ -2714,6 +2997,7 @@ var barSvg = (function (urlBars) {
     /*eslint no-console: 0 */
     var _ = { svg: null, barProjection: null, q: null, bars: null, valuePath: null };
     var $ = {};
+    var scale50 = d3.scaleLinear().domain([0, 200]).range([5, 50]);
 
     function init() {
         var __ = this._;
@@ -2736,8 +3020,8 @@ var barSvg = (function (urlBars) {
                 return parseInt(d.geometry.value);
             });
 
-            var scale = __.proj.scale();
-            _.lengthScale = d3.scaleLinear().domain([0, _.max]).range([scale, scale + 50]);
+            var r = __.proj.scale();
+            _.heightScale = d3.scaleLinear().domain([0, _.max]).range([r, r + scale50(r)]);
 
             $.bar = gBar.selectAll('line').data(_.bars.features).enter().append('line').attr('stroke', 'red').attr('stroke-width', '2').attr('data-index', function (d, i) {
                 return i;
@@ -2750,7 +3034,7 @@ var barSvg = (function (urlBars) {
         var __ = this._;
         if (_.bars && __.options.showBars) {
             var proj1 = __.proj;
-            var scale = _.lengthScale;
+            var scale = _.heightScale;
             var proj2 = _.barProjection;
             var center = proj1.invert(__.center);
             proj2.rotate(this._.proj.rotate());
@@ -3170,6 +3454,139 @@ var dotsCanvas = (function (urlJson) {
     };
 });
 
+// https://bl.ocks.org/mbostock/2b85250396c17a79155302f91ec21224
+// https://bl.ocks.org/pbogden/2f8d2409f1b3746a1c90305a1a80d183
+// http://www.svgdiscovery.com/ThreeJS/Examples/17_three.js-D3-graticule.htm
+var dotsThreejs = (function (urlJson) {
+    /*eslint no-console: 0 */
+    var _ = { dataDots: null };
+
+    function init() {
+        this._.options.showDots = true;
+    }
+
+    function createDot(feature) {
+        if (feature) {
+            var tj = this.threejsPlugin;
+            // var dc = [-77.0369, 38.9072];
+            // var position = tj.vertex(feature ? feature.geometry.coordinates : dc);
+            var position = tj.vertex(feature.geometry.coordinates);
+            var material = new THREE.SpriteMaterial({ color: 0x0000ff });
+            var dot = new THREE.Sprite(material);
+            dot.position.set(position.x, position.y, position.z);
+            return dot;
+        }
+    }
+
+    function create() {
+        var tj = this.threejsPlugin;
+        if (!_.dots) {
+            create1.call(this);
+        }
+        _.dots.visible = this._.options.showDots;
+        tj.addGroup(_.dots);
+        tj.rotate();
+    }
+
+    function create1() {
+        var _this = this;
+        _.dots = new THREE.Group();
+        _.dataDots.features.forEach(function (d) {
+            var dot = createDot.call(_this, d);
+            dot && _.dots.add(dot);
+        });
+    }
+
+    // function create2() {
+    // }
+
+    return {
+        name: 'dotsThreejs',
+        urls: urlJson && [urlJson],
+        onReady: function onReady(err, data) {
+            this.dotsThreejs.data(data);
+        },
+        onInit: function onInit() {
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onRefresh: function onRefresh() {
+            _.dots.visible = this._.options.showDots;
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.dataDots = _data;
+            } else {
+                return _.dataDots;
+            }
+        }
+    };
+});
+
+var dotsCThreejs = (function (urlDots) {
+    /*eslint no-console: 0 */
+    var _ = { dataDots: null };
+
+    function init() {
+        var dots = void 0;
+        var __ = this._;
+        __.options.showDots = true;
+        this.canvasThreejs.onDraw({
+            dotsCThreejs: function dotsCThreejs(context, path) {
+                if (__.options.showDots) {
+                    if (!dots) {
+                        dots = _.dots.map(function (d) {
+                            return d.circle;
+                        });
+                    }
+                    var _g = _.dataDots.geometry || {};
+                    context.beginPath();
+                    path({ type: 'GeometryCollection', geometries: dots });
+                    context.lineWidth = _g.lineWidth || 0.2;
+                    context.fillStyle = _g.fillStyle || 'rgba(100,0,0,.4)';
+                    context.strokeStyle = _g.strokeStyle || 'rgba(100,0,0,.6)';
+                    context.fill();
+                    context.stroke();
+                }
+            }
+        });
+    }
+
+    function initData() {
+        var geoCircle = d3.geoCircle();
+        var _g = _.dataDots.geometry || {};
+        var _r = _g.radius || 0.5;
+        _.dots = _.dataDots.features.map(function (d) {
+            var coordinates = d.geometry.coordinates;
+            var properties = d.properties;
+            var r = d.geometry.radius || _r;
+            var circle = geoCircle.center(coordinates).radius(r)();
+            return { properties: properties, coordinates: coordinates, circle: circle };
+        });
+    }
+
+    return {
+        name: 'dotsCThreejs',
+        urls: urlDots && [urlDots],
+        onReady: function onReady(err, dots) {
+            this.dotsCThreejs.data(dots);
+        },
+        onInit: function onInit() {
+            init.call(this);
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.dataDots = _data;
+                initData();
+            } else {
+                return _.dataDots;
+            }
+        }
+    };
+});
+
 var pingsCanvas = (function () {
     var _ = { dataPings: null, pings: [] };
 
@@ -3347,7 +3764,7 @@ var debugThreejs = (function () {
             _.sphereObject.add(sphereMesh, dot1Mesh, dot2Mesh, dot3Mesh);
 
             refresh.call(this);
-            this.threejsPlugin.addObject(_.sphereObject);
+            this.threejsPlugin.addScene(_.sphereObject);
         }
     }
 
@@ -3498,6 +3915,215 @@ var commonPlugins = (function (worldUrl) {
     };
 });
 
+//            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+//                    Version 2, December 2004
+//
+// Copyright (C) 2004 Sam Hocevar <sam@hocevar.net>
+//
+// Everyone is permitted to copy and distribute verbatim or modified
+// copies of this license document, and changing it is allowed as long
+// as the name is changed.
+//
+//            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+//   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+//
+//  0. You just DO WHAT THE FUCK YOU WANT TO.
+
+function Map3DGeometry(data, innerRadius) {
+    /*eslint no-redeclare: 0 */
+    if (arguments.length < 2 || isNaN(parseFloat(innerRadius)) || !isFinite(innerRadius) || innerRadius < 0) {
+        // if no valid inner radius is given, do not extrude
+        innerRadius = 42;
+    }
+
+    THREE.Geometry.call(this);
+    // data.vertices = [lat, lon, ...]
+    // data.polygons = [[poly indices, hole i-s, ...], ...]
+    // data.triangles = [tri i-s, ...]
+    var i,
+        uvs = [];
+    for (i = 0; i < data.vertices.length; i += 2) {
+        var lon = data.vertices[i];
+        var lat = data.vertices[i + 1];
+        // colatitude
+        var phi = +(90 - lat) * 0.01745329252;
+        // azimuthal angle
+        var the = +(180 - lon) * 0.01745329252;
+        // translate into XYZ coordinates
+        var wx = Math.sin(the) * Math.sin(phi) * -1;
+        var wz = Math.cos(the) * Math.sin(phi);
+        var wy = Math.cos(phi);
+        // equirectangular projection
+        var wu = 0.25 + lon / 360.0;
+        var wv = 0.5 + lat / 180.0;
+
+        this.vertices.push(new THREE.Vector3(wx, wy, wz));
+
+        uvs.push(new THREE.Vector2(wu, wv));
+    }
+
+    var n = this.vertices.length;
+
+    if (innerRadius <= 1) {
+        for (i = 0; i < n; i++) {
+            var v = this.vertices[i];
+            this.vertices.push(v.clone().multiplyScalar(innerRadius));
+        }
+    }
+
+    for (i = 0; i < data.triangles.length; i += 3) {
+        var a = data.triangles[i];
+        var b = data.triangles[i + 1];
+        var c = data.triangles[i + 2];
+
+        this.faces.push(new THREE.Face3(a, b, c, [this.vertices[a], this.vertices[b], this.vertices[c]]));
+        this.faceVertexUvs[0].push([uvs[a], uvs[b], uvs[c]]);
+
+        if (0 < innerRadius && innerRadius <= 1) {
+            this.faces.push(new THREE.Face3(n + b, n + a, n + c, [this.vertices[b].clone().multiplyScalar(-1), this.vertices[a].clone().multiplyScalar(-1), this.vertices[c].clone().multiplyScalar(-1)]));
+            this.faceVertexUvs[0].push([uvs[b], uvs[a], uvs[c]]); // shitty uvs to make 3js exporter happy
+        }
+    }
+
+    // extrude
+    if (innerRadius < 1) {
+        for (i = 0; i < data.polygons.length; i++) {
+            var polyWithHoles = data.polygons[i];
+            for (var j = 0; j < polyWithHoles.length; j++) {
+                var polygonOrHole = polyWithHoles[j];
+                for (var k = 0; k < polygonOrHole.length; k++) {
+                    var a = polygonOrHole[k],
+                        b = polygonOrHole[(k + 1) % polygonOrHole.length];
+                    var va1 = this.vertices[a],
+                        vb1 = this.vertices[b];
+                    var va2 = this.vertices[n + a]; //, vb2 = this.vertices[n + b];
+                    var normal;
+                    if (j < 1) {
+                        // polygon
+                        normal = vb1.clone().sub(va1).cross(va2.clone().sub(va1)).normalize();
+                        this.faces.push(new THREE.Face3(a, b, n + a, [normal, normal, normal]));
+                        this.faceVertexUvs[0].push([uvs[a], uvs[b], uvs[a]]); // shitty uvs to make 3js exporter happy
+                        if (innerRadius > 0) {
+                            this.faces.push(new THREE.Face3(b, n + b, n + a, [normal, normal, normal]));
+                            this.faceVertexUvs[0].push([uvs[b], uvs[b], uvs[a]]); // shitty uvs to make 3js exporter happy
+                        }
+                    } else {
+                        // hole
+                        normal = va2.clone().sub(va1).cross(vb1.clone().sub(va1)).normalize();
+                        this.faces.push(new THREE.Face3(b, a, n + a, [normal, normal, normal]));
+                        this.faceVertexUvs[0].push([uvs[b], uvs[a], uvs[a]]); // shitty uvs to make 3js exporter happy
+                        if (innerRadius > 0) {
+                            this.faces.push(new THREE.Face3(b, n + a, n + b, [normal, normal, normal]));
+                            this.faceVertexUvs[0].push([uvs[b], uvs[a], uvs[b]]); // shitty uvs to make 3js exporter happy
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    this.computeFaceNormals();
+
+    this.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1);
+}
+
+Map3DGeometry.prototype = Object.create(THREE.Geometry.prototype);
+
+// import data from './globe';
+var world3d = (function () {
+    var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world_geometry.json';
+    var landUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../d/gold.jpg';
+    var rtt = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : -1.57;
+
+    /*eslint no-console: 0 */
+    var _ = { sphereObject: new THREE.Object3D() };
+
+    function loadCountry() {
+        var data = _.world;
+        for (var name in data) {
+            var geometry = new Map3DGeometry(data[name], 0.9);
+            _.sphereObject.add(data[name].mesh = new THREE.Mesh(geometry, _.material));
+        }
+        _.loaded = true;
+    }
+
+    function init() {
+        this._.options.showWorld = true;
+        _.sphereObject.rotation.y = rtt;
+        _.sphereObject.scale.set(205, 205, 205);
+        makeEnvMapMaterial(landUrl, function (material) {
+            _.material = material;
+            if (_.world && !_.loaded) {
+                loadCountry();
+            }
+        });
+    }
+
+    function create() {
+        if (_.material && !_.loaded) {
+            loadCountry();
+        }
+        _.sphereObject.visible = this._.options.showWorld;
+        var tj = this.threejsPlugin;
+        tj.addGroup(_.sphereObject);
+        tj.rotate();
+    }
+
+    var vertexShader = '\n    varying vec2 vN;\n    void main() {\n        vec4 p = vec4( position, 1. );\n        vec3 e = normalize( vec3( modelViewMatrix * p ) );\n        vec3 n = normalize( normalMatrix * normal );\n        vec3 r = reflect( e, n );\n        float m = 2. * length( vec3( r.xy, r.z + 1. ) );\n        vN = r.xy / m + .5;\n        gl_Position = projectionMatrix * modelViewMatrix * p;\n    }\n    ';
+    var fragmentShader = '\n    uniform sampler2D tMatCap;\n    varying vec2 vN;\n    void main() {\n        vec3 base = texture2D( tMatCap, vN ).rgb;\n        gl_FragColor = vec4( base, 1. );\n    }\n    ';
+    function makeEnvMapMaterial(imgUrl, cb) {
+        var loader = new THREE.TextureLoader();
+        loader.load(imgUrl, function (value) {
+            var type = 't';
+            var uniforms = { tMatCap: { type: type, value: value } };
+            var material = new THREE.ShaderMaterial({
+                uniforms: uniforms,
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                shading: THREE.SmoothShading
+            });
+            cb.call(this, material);
+        });
+    }
+
+    function refresh() {
+        if (_.sphereObject) {
+            _.sphereObject.visible = this._.options.showWorld;
+        }
+    }
+
+    return {
+        name: 'world3d',
+        urls: worldUrl && [worldUrl],
+        onReady: function onReady(err, data) {
+            this.world3d.data(data);
+        },
+        onInit: function onInit() {
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onRefresh: function onRefresh() {
+            refresh.call(this);
+        },
+        rotate: function rotate(rtt) {
+            _.sphereObject.rotation.y = rtt;
+            this.threejsPlugin.rotate();
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.world = _data;
+            } else {
+                return _.world;
+            }
+        },
+        sphere: function sphere() {
+            return _.sphereObject;
+        }
+    };
+});
+
 earthjs$1.plugins = {
     configPlugin: configPlugin,
     autorotatePlugin: autorotatePlugin,
@@ -3508,8 +4134,11 @@ earthjs$1.plugins = {
     hoverCanvas: hoverCanvas,
     clickCanvas: clickCanvas,
     dblClickCanvas: dblClickCanvas,
+    canvasThreejs: canvasThreejs,
+    oceanThreejs: oceanThreejs,
     oceanSvg: oceanSvg,
     sphereSvg: sphereSvg,
+    textureThreejs: textureThreejs,
     graticuleCanvas: graticuleCanvas,
     graticuleThreejs: graticuleThreejs,
     graticuleSvg: graticuleSvg,
@@ -3526,6 +4155,7 @@ earthjs$1.plugins = {
     worldCanvas: worldCanvas,
     worldSvg: worldSvg,
     worldThreejs: worldThreejs,
+    imageThreejs: imageThreejs,
     centerCanvas: centerCanvas,
     centerSvg: centerSvg,
     flattenPlugin: flattenPlugin,
@@ -3533,10 +4163,13 @@ earthjs$1.plugins = {
     dotsSvg: dotsSvg,
     pinCanvas: pinCanvas,
     dotsCanvas: dotsCanvas,
+    dotsThreejs: dotsThreejs,
+    dotsCThreejs: dotsCThreejs,
     pingsCanvas: pingsCanvas,
     pingsSvg: pingsSvg,
     debugThreejs: debugThreejs,
-    commonPlugins: commonPlugins
+    commonPlugins: commonPlugins,
+    world3d: world3d
 };
 
 return earthjs$1;
