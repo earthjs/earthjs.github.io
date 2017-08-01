@@ -16,27 +16,19 @@
     <script>
         const g = earthjs()
         .register(earthjs.plugins.mousePlugin())
-        .register(earthjs.plugins.configPlugin())
         .register(earthjs.plugins.threejsPlugin())
         .register(earthjs.plugins.autorotatePlugin())
         .register(earthjs.plugins.dropShadowSvg())
         .register(earthjs.plugins.oceanThreejs())
-        // .register(earthjs.plugins.graticuleThreejs())
-        .register(earthjs.plugins.canvasThreejs('../d/world-110m.json'))
-        // .register(earthjs.plugins.worldThreejs('../d/world-110m.json'))
-        .register(earthjs.plugins.dotsCThreejs())
-        .register(earthjs.plugins.barThreejs('../d/bars.json'));
-        g.canvasThreejs.ready = function(err, json) {
-            g.canvasThreejs.data(json);
-            // g.worldThreejs.data(json);
-        };
-        g.barThreejs.ready = function(err, json) {
+        .register(earthjs.plugins.graticuleThreejs())
+        .register(earthjs.plugins.worldThreejs('../d/world-110m.json'))
+        .register(earthjs.plugins.iconsThreejs('../d/bars.json','../d/check.svg'))
+        .register(earthjs.plugins.barThreejs());
+        g.iconsThreejs.ready = function(err, json) {
             json.features.forEach(d => d.geometry.value = d.properties.mag);
-            json.geometry = {radius: 2}
-            g.dotsCThreejs.data(json);
+            g.iconsThreejs.data(json);
             g.barThreejs.data(json);
         };
-        g._.options.transparent = true;
         g.ready(function(){
             g.create();
         })
