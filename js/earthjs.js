@@ -387,6 +387,59 @@ var autorotatePlugin = (function () {
     };
 });
 
+// http://bl.ocks.org/syntagmatic/6645345
+var countryCanvas = (function (worldUrl) {
+    /*eslint no-console: 0 */
+    var _ = {};
+
+    function init() {
+        _.canvas = d3.select('body').append('canvas').attr('class', 'ej-hidden').attr('width', '1024').attr('height', '512').node();
+        _.context = _.canvas.getContext('2d');
+        _.proj = d3.geoEquirectangular().precision(0.5).translate([512, 256]).scale(163);
+        _.path = d3.geoPath().projection(_.proj).context(_.context);
+    }
+
+    function create() {
+        _.context.clearRect(0, 0, 1024, 512);
+        var i = _.countries.features.length;
+        while (i--) {
+            _.context.beginPath();
+            _.path(_.countries.features[i]);
+            _.context.fillStyle = "rgb(" + (i + 1) + ",0,0)";
+            _.context.fill();
+        }
+    }
+
+    return {
+        name: 'countryCanvas',
+        urls: worldUrl && [worldUrl],
+        onReady: function onReady(err, data) {
+            this.countryCanvas.data(data);
+        },
+        onInit: function onInit() {
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.world = _data;
+                _.countries = topojson.feature(_data, _data.objects.countries);
+            } else {
+                return _.world;
+            }
+        },
+        detectCountry: function detectCountry(pos) {
+            var hiddenPos = _.proj(pos);
+            if (hiddenPos[0] > 0) {
+                var p = _.context.getImageData(hiddenPos[0], hiddenPos[1], 1, 1).data;
+                return _.countries.features[p[0] - 1];
+            }
+        }
+    };
+});
+
 // Mike Bostock’s Block https://bl.ocks.org/mbostock/7ea1dde508cec6d2d95306f92642bc42
 var mousePlugin = (function () {
     var _ref = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : { zoomScale: [0, 1000] },
@@ -743,8 +796,9 @@ var hoverCanvas = (function () {
             }
         }
         var __ = this._;
+        var _this = this;
         var mouseMoveHandler = function mouseMoveHandler() {
-            var _this = this;
+            var _this2 = this;
 
             var event = d3.event;
             if (__.drag || !event) {
@@ -761,15 +815,19 @@ var hoverCanvas = (function () {
             _.country = null;
             if (__.options.showDots) {
                 _.onCircleVals.forEach(function (v) {
-                    _.dot = v.call(_this, _.mouse, pos);
+                    _.dot = v.call(_this2, _.mouse, pos);
                 });
             }
             if (__.options.showLand && _.countries && !_.dot) {
                 if (!__.drag) {
-                    _.country = findCountry(pos);
+                    if (_this.countryCanvas) {
+                        _.country = _this.countryCanvas.detectCountry(pos);
+                    } else {
+                        _.country = findCountry(pos);
+                    }
                 }
                 _.onCountryVals.forEach(function (v) {
-                    v.call(_this, _.mouse, _.country);
+                    v.call(_this2, _.mouse, _.country);
                 });
             }
         };
@@ -815,6 +873,9 @@ var hoverCanvas = (function () {
             } else {
                 return _.world;
             }
+        },
+        country: function country() {
+            return _.country;
         },
         state: function state() {
             return {
@@ -2039,12 +2100,15 @@ var worldCanvas = (function (worldUrl) {
             if (!__.drag) {
                 __.options.showLakes && canvasAddLakes.call(this);
                 if (this.hoverCanvas && __.options.showSelectedCountry) {
-                    this.canvasPlugin.render(function (context, path) {
-                        context.beginPath();
-                        path(this.hoverCanvas.data().country);
-                        context.fillStyle = 'rgba(117, 0, 0, 0.4)';
-                        context.fill();
-                    }, _.drawTo, _.options);
+                    var country = this.hoverCanvas.country();
+                    if (country) {
+                        this.canvasPlugin.render(function (context, path) {
+                            context.beginPath();
+                            path(country);
+                            context.fillStyle = 'rgba(117, 0, 0, 0.4)';
+                            context.fill();
+                        }, _.drawTo, _.options);
+                    }
                 }
             }
         }
@@ -3136,6 +3200,7 @@ var threejsPlugin = (function () {
         _.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, canvas: container });
         _.renderer.setClearColor(0x000000, 0);
         _.renderer.setSize(width, height);
+        _.renderer.sortObjects = false;
         this.renderThree = renderThree;
 
         // var geometry = new THREE.SphereGeometry(3, 50, 50, 0, Math.PI * 2, 0, Math.PI * 2);
@@ -3916,6 +3981,177 @@ var graticuleThreejs = (function () {
     };
 });
 
+// http://callumprentice.github.io/apps/flight_stream/index.html
+var flightLineThreejs = (function (jsonUrl) {
+    var num_decorators = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 15;
+
+    /*eslint no-console: 0 */
+    var _ = {
+        sphereObject: null
+    };
+
+    var vertexshader = "\n        uniform vec2 uvScale;\n        varying vec2 vUv;\n\n        void main() {\n            vUv = uv;\n            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);\n            gl_Position = projectionMatrix * mvPosition;\n        }";
+
+    var fragmentshader = "\n        uniform float time;\n        uniform vec2 resolution;\n        varying vec2 vUv;\n\n        void main(void) {\n            vec2 position = vUv / resolution.xy;\n            float green = abs(sin(position.x * position.y + time / 5.0)) + 0.5;\n            float red   = abs(sin(position.x * position.y + time / 4.0)) + 0.1;\n            float blue  = abs(sin(position.x * position.y + time / 3.0)) + 0.2;\n            gl_FragColor= vec4(red, green, blue, 1.0);\n        }";
+
+    // get the point in space on surface of sphere radius radius from lat lng
+    // lat and lng are in degrees
+    function latlngPosFromLatLng(lat, lng, radius) {
+        var phi = (90 - lat) * Math.PI / 180;
+        var theta = (360 - lng) * Math.PI / 180;
+        var x = radius * Math.sin(phi) * Math.cos(theta);
+        var y = radius * Math.cos(phi);
+        var z = radius * Math.sin(phi) * Math.sin(theta);
+
+        return {
+            phi: phi,
+            theta: theta,
+            x: x,
+            y: y,
+            z: z
+        };
+    }
+
+    // convert an angle in degrees to same in radians
+    function latlngDeg2rad(n) {
+        return n * Math.PI / 180;
+    }
+
+    // Find intermediate points on sphere between two lat/lngs
+    // lat and lng are in degrees
+    // offset goes from 0 (lat/lng1) to 1 (lat/lng2)
+    // formula from http://williams.best.vwh.net/avform.htm#Intermediate
+    function latlngInterPoint(lat1, lng1, lat2, lng2, offset) {
+        lat1 = latlngDeg2rad(lat1);
+        lng1 = latlngDeg2rad(lng1);
+        lat2 = latlngDeg2rad(lat2);
+        lng2 = latlngDeg2rad(lng2);
+
+        var d = 2 * Math.asin(Math.sqrt(Math.pow(Math.sin((lat1 - lat2) / 2), 2) + Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin((lng1 - lng2) / 2), 2)));
+        var A = Math.sin((1 - offset) * d) / Math.sin(d);
+        var B = Math.sin(offset * d) / Math.sin(d);
+        var x = A * Math.cos(lat1) * Math.cos(lng1) + B * Math.cos(lat2) * Math.cos(lng2);
+        var y = A * Math.cos(lat1) * Math.sin(lng1) + B * Math.cos(lat2) * Math.sin(lng2);
+        var z = A * Math.sin(lat1) + B * Math.sin(lat2);
+        var lat = Math.atan2(z, Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2))) * 180 / Math.PI;
+        var lng = Math.atan2(y, x) * 180 / Math.PI;
+
+        return {
+            lat: lat,
+            lng: lng
+        };
+    }
+
+    var uniforms = {
+        time: {
+            type: "f",
+            value: 1.0
+        },
+        resolution: {
+            type: "v2",
+            value: new THREE.Vector2()
+        }
+    };
+
+    function addTrack(start_lat, start_lng, end_lat, end_lng, radius, group) {
+        var num_control_points = 10;
+        var max_altitude = Math.random() * 120;
+
+        var points = [];
+        for (var i = 0; i < num_control_points + 1; i++) {
+            var arc_angle = i * 180.0 / num_control_points;
+            var arc_radius = radius + Math.sin(latlngDeg2rad(arc_angle)) * max_altitude;
+            var latlng = latlngInterPoint(start_lat, start_lng, end_lat, end_lng, i / num_control_points);
+            var pos = latlngPosFromLatLng(latlng.lat, latlng.lng, arc_radius);
+
+            points.push(new THREE.Vector3(pos.x, pos.y, pos.z));
+        }
+        var spline = new THREE.CatmullRomCurve3(points);
+
+        var circleRadius = 0.5;
+        var shape = new THREE.Shape();
+        shape.moveTo(0, circleRadius);
+        shape.quadraticCurveTo(circleRadius, circleRadius, circleRadius, 0);
+        shape.quadraticCurveTo(circleRadius, -circleRadius, 0, -circleRadius);
+        shape.quadraticCurveTo(-circleRadius, -circleRadius, -circleRadius, 0);
+        shape.quadraticCurveTo(-circleRadius, circleRadius, 0, circleRadius);
+        var circle_extrude = new THREE.ExtrudeGeometry(shape, {
+            bevelEnabled: false,
+            extrudePath: spline,
+            amount: 10,
+            steps: 64
+        });
+
+        var material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: vertexshader,
+            fragmentShader: fragmentshader
+        });
+
+        uniforms.resolution.value.x = 100;
+        uniforms.resolution.value.y = 100;
+
+        var mesh = new THREE.Mesh(circle_extrude, material);
+        group.add(mesh);
+    }
+
+    function init() {
+        this._.options.showFlightLine = true;
+    }
+
+    function create() {
+        var o = this._.options;
+        var tj = this.threejsPlugin;
+        if (!_.sphereObject) {
+            var group = new THREE.Group();
+            var SCALE = this._.proj.scale();
+
+            for (var i = 0; i < num_decorators; ++i) {
+                var start_index = Math.floor(Math.random() * _.data.length) - 1;
+                var start_lat = _.data[start_index].lat;
+                var start_lng = _.data[start_index].lng;
+
+                var end_index = Math.floor(Math.random() * _.data.length) - 1;
+                var end_lat = _.data[end_index].lat;
+                var end_lng = _.data[end_index].lng;
+                addTrack(start_lat, start_lng, end_lat, end_lng, SCALE, group);
+            }
+            _.sphereObject = group;
+            console.log('done add');
+        }
+        _.sphereObject.visible = o.showFlightLine;
+        tj.addGroup(_.sphereObject);
+        tj.rotate();
+    }
+
+    return {
+        name: 'flightLineThreejs',
+        urls: jsonUrl && [jsonUrl],
+        onReady: function onReady(err, data) {
+            this.flightLineThreejs.data(data);
+        },
+        onInit: function onInit() {
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onRefresh: function onRefresh() {
+            _.sphereObject.visible = this._.options.showFlightLine;
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.data = _data;
+            } else {
+                return _.data;
+            }
+        },
+        sphere: function sphere() {
+            return _.sphereObject;
+        }
+    };
+});
+
 var debugThreejs = (function () {
     var _ = { sphereObject: null, scale: null };
     _.scale = d3.scaleLinear().domain([0, 200]).range([0, 1]);
@@ -4639,6 +4875,7 @@ var commonPlugins = (function (worldUrl) {
 earthjs$1.plugins = {
     configPlugin: configPlugin,
     autorotatePlugin: autorotatePlugin,
+    countryCanvas: countryCanvas,
     mousePlugin: mousePlugin,
     zoomPlugin: zoomPlugin,
     canvasPlugin: canvasPlugin,
@@ -4680,6 +4917,7 @@ earthjs$1.plugins = {
     canvasThreejs: canvasThreejs,
     textureThreejs: textureThreejs,
     graticuleThreejs: graticuleThreejs,
+    flightLineThreejs: flightLineThreejs,
     debugThreejs: debugThreejs,
     oceanThreejs: oceanThreejs,
     imageThreejs: imageThreejs,
