@@ -15,8 +15,8 @@ const eQuakeApp = () => {
             _.equake = equake;
             this.eQuakeApp.mag(5);
             this.hoverCanvas.data(world);
-            this.worldCanvas.data(world);
             this.countrySelectCanvas.data(world);
+            this.worldCanvas.data(world);
         },
         onInit() {
             this.register(earthjs.plugins.commonPlugins());

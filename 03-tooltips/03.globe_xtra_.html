@@ -1,0 +1,90 @@
+<html>
+<head>
+    <link type="text/css" rel="stylesheet" href="../css/earthjs.css">
+    <script type='text/javascript' src="../js/d3.min.js"></script>
+    <script type='text/javascript' src="../js/topojson.min.js"></script>
+    <script type='text/javascript' src='../js/earthjs.js'></script>
+    <style>
+        .e-container {
+            display: inline-block;
+            position: relative;
+            width: 700px;
+            height: 500px;
+        }
+    </style>
+</head>
+<body>
+    <div class="e-container">
+        <svg    class="ej-svg s1"/>
+        <canvas class="ej-svg c1 ej-canvas"></canvas>
+    </div>
+    <div class="e-container">
+        <svg    class="ej-svg s2"/>
+        <canvas class="ej-svg c2 ej-canvas"></canvas>
+    </div>
+    <script>
+        const ready = function(err, json) {
+            const features = json.features;
+            const maxMag = features.map(d => d.properties.mag).sort(d3.descending)[0];
+            const scale = d3.scaleLinear().domain([3, maxMag]).range([0.5, 2]);
+            json.features.forEach(d => {
+                d.geometry.value = d.properties.mag
+                d.geometry.radius = scale(d.properties.mag);
+            });
+            json.geometry = {
+                radius: 1,
+                lineWidth: 0.5,
+                fillStyle: 'rgba(100,0,0,.4)',
+                strokeStyle: 'rgba(100,0,0,.6)'
+            }
+            return json;
+        };
+        function factory(s,c,dUrl='../d/bars.json') {
+            const g = earthjs({selector:s,transparent:true});
+            g.register(earthjs.plugins.hoverCanvas());
+            g.register(earthjs.plugins.canvasPlugin());
+            g.register(earthjs.plugins.dropShadowSvg());
+            g.register(earthjs.plugins.oceanSvg());
+            // g.register(earthjs.plugins.graticuleCanvas());
+            g.register(earthjs.plugins.worldCanvas('../d/world-110m.json'));
+            g.register(earthjs.plugins.dotsCanvas());
+            g.register(earthjs.plugins.dotSelectCanvas());
+            g.register(earthjs.plugins.dotTooltipCanvas());
+            g.register(earthjs.plugins.pinCanvas(dUrl,'../images/pin.png'));
+            g.canvasPlugin.selectAll(c);
+            g.pinCanvas.ready = function(err, json) {
+                json = ready(err, json);
+                g.dotsCanvas.data(json);
+                g.pinCanvas.data(json);
+            };
+            g.ready(function(){
+                g.create();
+            });
+            return g;
+        }
+        const g1 = factory('.s1', '.c1','../d/cities.geojson');
+        const g2 = factory('.s2', '.c2');
+        g1._.options.showPin = false;
+        g1.dotTooltipCanvas.show = function(data, tooltip) {
+            const {tld, area, region, name, capital, currency, callingCode} = data.properties;
+            const props = {
+                name,
+                capital,
+                callingCode,
+                region,
+                currency,
+                area,
+                tld,
+                coordinates: data.coordinates.join(', ')
+            };
+            const title = Object.keys(props).map(k => k+': '+props[k]).join('<br/>');
+            return tooltip.html('<h3>Dot:</h3>'+title)
+        }
+        g1.register(earthjs.plugins.mousePlugin());
+        g1.hoverCanvas.registerMouseDrag();
+        // g1.register(earthjs.plugins.autorotatePlugin());
+        // g1.autorotatePlugin.sync([g2]);
+        g1.mousePlugin.sync([g2]);
+    </script>
+</body>
+</html>

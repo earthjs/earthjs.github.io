@@ -9,10 +9,10 @@
     <svg id="earth-js"></svg>
     <script>
         const g = earthjs({transparent:true});
+        g.register(earthjs.plugins.autorotatePlugin(10));
         g.register(earthjs.plugins.mousePlugin());
-        g.register(earthjs.plugins.autorotatePlugin());
         g.register(earthjs.plugins.graticuleSvg());
-        g.register(earthjs.plugins.dotsSvg('../d/bars.json',{important:true}));
+        g.register(earthjs.plugins.dotsSvg('../d/bars.json'));
         g.dotsSvg.ready = function(err, json) {
             json.geometry = {radius: 2}
             g.dotsSvg.data(json);
