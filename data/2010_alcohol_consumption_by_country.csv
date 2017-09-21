@@ -1,0 +1,192 @@
+location,alcohol,cid
+Belarus,17.5,BY
+Moldova,16.8,MD
+Lithuania,15.4,LT
+Russia,15.1,RU
+Romania,14.4,RO
+Ukraine,13.9,UA
+Andorra,13.8,AD
+Hungary,13.3,HU
+Czech Republic,13,CZ
+Slovakia,13,SK
+Portugal,12.9,PT
+Serbia,12.6,RS
+Grenada,12.5,GD
+Poland,12.5,PL
+Latvia,12.3,LV
+Finland,12.3,FI
+South Korea,12.3,KR
+France,12.2,FR
+Australia,12.2,AU
+Croatia,12.2,HR
+Ireland,11.9,IE
+Luxembourg,11.9,LU
+Germany,11.8,DE
+Slovenia,11.6,SI
+United Kingdom,11.6,GB
+Denmark,11.4,DK
+Bulgaria,11.4,BG
+Spain,11.2,ES
+Belgium,11,BE
+South Africa,11,ZA
+New Zealand,10.9,NZ
+Gabon,10.9,GA
+Namibia,10.8,NA
+Switzerland,10.7,CH
+Saint Lucia,10.4,LC
+Austria,10.3,AT
+Estonia,10.3,EE
+Greece,10.3,GR
+Kazakhstan,10.3,KZ
+Canada,10.2,CA
+Nigeria,10.1,NG
+Netherlands,9.9,NL
+Uganda,9.8,UG
+Rwanda,9.8,RW
+Chile,9.6,CL
+Argentina,9.3,AR
+Burundi,9.3,BI
+United States,9.2,US
+Cyprus,9.2,CY
+Sweden,9.2,SE
+Venezuela,8.9,VE
+Paraguay,8.8,PY
+Brazil,8.7,BR
+Sierra Leone,8.7,SL
+Montenegro,8.7,ME
+Belize,8.5,BZ
+Cameroon,8.4,CM
+Botswana,8.4,BW
+Saint Kitts and Nevis,8.2,KN
+Guyana,8.1,GY
+Peru,8.1,PE
+Panama,8,PA
+Niue,8,NU
+Palau,7.9,PW
+Norway,7.7,NO
+Tanzania,7.7,TZ
+Georgia,7.7,GE
+Uruguay,7.6,UY
+Angola,7.5,AO
+Laos,7.3,LA
+Japan,7.2,JP
+Mexico,7.2,MX
+Ecuador,7.2,EC
+Dominica,7.1,DM
+Iceland,7.1,IS
+Thailand,7.1,TH
+Bosnia and Herzegovina,7.1,BA
+Sao Tome and Principe,7.1,ST
+Malta,7,MT
+Albania,7,AL
+Bahamas,6.9,BS
+Dominican Republic,6.9,DO
+Mongolia,6.9,MN
+Cape Verde,6.9,CV
+Barbados,6.8,BB
+Burkina Faso,6.8,BF
+Italy,6.7,IT
+Trinidad and Tobago,6.7,TT
+China,6.7,CN
+Macedonia,6.7,MK
+Saint Vincent and the Grenadines,6.6,VC
+Equatorial Guinea,6.6,GQ
+Suriname,6.6,SR
+Vietnam,6.6,VN
+Lesotho,6.5,LS
+Haiti,6.4,HT
+Cook Islands,6.4,CK
+Colombia,6.2,CO
+Ivory Coast,6,CI
+Bolivia,5.9,BO
+Swaziland,5.7,SZ
+Zimbabwe,5.7,ZW
+Seychelles,5.6,SC
+Cambodia,5.5,KH
+Puerto Rico,5.4,PR
+Netherlands Antilles,5.4,AN
+Philippines,5.4,PH
+Costa Rica,5.4,CR
+Armenia,5.3,AM
+Cuba,5.2,CU
+Nicaragua,5,NI
+Jamaica,4.9,JM
+Ghana,4.8,GH
+Liberia,4.7,LR
+Uzbekistan,4.6,UZ
+Chad,4.4,TD
+United Arab Emirates,4.3,AE
+Kyrgyzstan,4.3,KG
+India,4.3,IN
+Turkmenistan,4.3,TM
+Kenya,4.3,KE
+Ethiopia,4.2,ET
+Honduras,4,HN
+Guinea-Bissau,4,GW
+Zambia,4,ZM
+Republic of the Congo,3.9,CG
+Guatemala,3.8,GT
+Central African Republic,3.8,CF
+North Korea,3.7,KP
+Sri Lanka,3.7,LK
+Mauritius,3.6,MU
+Samoa,3.6,WS
+Democratic Republic of the Congo,3.6,CD
+Nauru,3.5,NR
+Gambia,3.4,GM
+Federated States of Micronesia,3.3,
+El Salvador,3.2,SV
+Fiji,3,FJ
+Papua New Guinea,3,PG
+Kiribati,3,KI
+Tajikistan,2.8,TJ
+Israel,2.8,IL
+Sudan,2.7,SD
+Malawi,2.5,MW
+Lebanon,2.4,LB
+Azerbaijan,2.3,AZ
+Mozambique,2.3,MZ
+Togo,2.3,TG
+Nepal,2.2,NP
+Brunei,2.1,BN
+Benin,2.1,BJ
+Singapore,2,SG
+Turkey,2,TR
+Madagascar,1.8,MG
+Solomon Islands,1.7,SB
+Tonga,1.6,TO
+Tunisia,1.5,TN
+Tuvalu,1.5,TV
+Qatar,1.5,QA
+Vanuatu,1.4,VU
+Djibouti,1.3,DJ
+Malaysia,1.3,MY
+Syria,1.2,SY
+Maldives,1.2,MV
+Mali,1.1,ML
+Eritrea,1.1,ER
+Algeria,1,DZ
+Iran,1,IR
+Oman,0.9,OM
+Brunei,0.9,BN
+Morocco,0.9,MA
+Jordan,0.7,JO
+Bhutan,0.7,BT
+Guinea,0.7,GN
+Myanmar,0.7,MM
+Afghanistan,0.7,AF
+Senegal,0.6,SN
+Indonesia,0.6,ID
+Timor-Leste,0.6,TL
+Iraq,0.5,IQ
+Somalia,0.5,SO
+Egypt,0.4,EG
+Niger,0.3,NE
+Yemen,0.3,YE
+Comoros,0.2,KM
+Saudi Arabia,0.2,SA
+Bangladesh,0.2,BD
+Kuwait,0.1,KW
+Libya,0.1,LY
+Mauritania,0.1,MR
+Pakistan,0.1,PK

@@ -1,0 +1,42 @@
+<html>
+<head>
+    <link type="text/css" rel="stylesheet" href="../css/earthjs.css">
+    <script type='text/javascript' src="../js/d3.min.js"></script>
+    <script type='text/javascript' src="../js/topojson.min.js"></script>
+    <script type='text/javascript' src='../js/earthjs.js'></script>
+</head>
+<body>
+    <span class="globe-container">
+        <svg id="earth-js"></svg>
+        <canvas class="ej-canvas c1"></canvas>
+        <canvas class="ej-canvas c2"></canvas>
+    </span>
+    <script>
+        const g1 = earthjs({rotate: 0});
+        const g2 = earthjs({rotate: 180});
+        g1.register(earthjs.plugins.mousePlugin());
+
+        g1.register(earthjs.plugins.dropShadowSvg());
+        g1.register(earthjs.plugins.oceanSvg());
+        g1.register(earthjs.plugins.fauxGlobeSvg());
+
+        g1.register(earthjs.plugins.canvasPlugin());
+        g1.register(earthjs.plugins.graticuleCanvas());
+        g1.register(earthjs.plugins.worldCanvas('../d/world-110m.json'));
+
+        g2.register(earthjs.plugins.canvasPlugin());
+        g2.register(earthjs.plugins.worldCanvas());
+
+        g1.worldCanvas.style({land: 'rgba(170 ,0, 217, 0.4)'});
+        g2.worldCanvas.style({land: 'rgba(7, 117, 207, 0.4)'});
+        g1.canvasPlugin.selectAll('.c1');
+        g2.canvasPlugin.selectAll('.c2');
+        g1.mousePlugin.sync([g2]);
+        g1.ready(function(){
+            const d = g1.worldCanvas.data();
+            g2.worldCanvas.data(d);
+            g1.create([g2]);
+        });
+    </script>
+</body>
+</html>

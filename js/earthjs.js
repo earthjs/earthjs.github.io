@@ -143,37 +143,42 @@ var earthjs$2 = function earthjs() {
         },
         $slc: {},
         ready: function ready(fn) {
-            if (fn && _.promeses.length > 0) {
-                var q = d3.queue();
-                _.loadingData = true;
-                _.promeses.forEach(function (obj) {
-                    obj.urls.forEach(function (url) {
-                        var ext = url.split('.').pop();
-                        if (ext === 'geojson') {
-                            ext = 'json';
-                        }
-                        q.defer(d3[ext], url);
-                    });
-                });
-                q.await(function () {
-                    var args = [].slice.call(arguments);
-                    var err = args.shift();
+            if (fn) {
+                globe._.readyFn = fn;
+                globe._.promeses = _.promeses;
+                if (_.promeses.length > 0) {
+                    var q = d3.queue();
+                    _.loadingData = true;
                     _.promeses.forEach(function (obj) {
-                        var ln = obj.urls.length;
-                        var ar = args.slice(0, ln);
-                        var ready = globe[obj.name].ready;
-                        ar.unshift(err);
-
-                        if (ready) {
-                            ready.apply(globe, ar);
-                        } else {
-                            obj.onReady.apply(globe, ar);
-                        }
-                        args = args.slice(ln);
+                        obj.urls.forEach(function (url) {
+                            var ext = url.split('.').pop();
+                            if (ext === 'geojson') {
+                                ext = 'json';
+                            }
+                            q.defer(d3[ext], url);
+                        });
                     });
-                    _.loadingData = false;
-                    fn.call(globe);
-                });
+                    q.await(function () {
+                        var args = [].slice.call(arguments);
+                        var err = args.shift();
+                        _.promeses.forEach(function (obj) {
+                            var ln = obj.urls.length;
+                            var ar = args.slice(0, ln);
+                            var ready = globe[obj.name].ready;
+                            ar.unshift(err);
+
+                            if (ready) {
+                                ready.apply(globe, ar);
+                            } else {
+                                obj.onReady.apply(globe, ar);
+                            }
+                            args = args.slice(ln);
+                        });
+                        _.loadingData = false;
+                        fn.called = true;
+                        fn.call(globe);
+                    });
+                }
             } else if (arguments.length === 0) {
                 return _.loadingData;
             }
@@ -502,6 +507,13 @@ var worldJson = (function (jsonUrl) {
 
                 return { world: world, land: land, lakes: lakes, countries: countries };
             }
+        },
+        countries: function countries(arr) {
+            if (arr) {
+                _.countries.features = arr;
+            } else {
+                return _.countries.features;
+            }
         }
     };
 });
@@ -517,8 +529,37 @@ var toConsumableArray = function (arr) {
 };
 
 var choroplethCsv = (function (csvUrl) {
+    var scheme = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'schemeReds';
+
     /*eslint no-console: 0 */
-    var _ = { choropleth: null, color: null };
+    var _ = {
+        data: null,
+        color: null,
+        selectedColorId: null,
+        selectedCountryId: null,
+        countries: { type: 'FeatureCollection', features: [] }
+    };
+    window._ = _;
+
+    function getPath(path) {
+        var v = this;
+        path.split('.').forEach(function (p) {
+            return v = v[p];
+        });
+        return v;
+    }
+
+    function updatePath(path, value) {
+        var o = void 0,
+            k = void 0,
+            v = this;
+        path.split('.').forEach(function (p) {
+            o = v;
+            k = p;
+            v = v[p];
+        });
+        o[k] = value;
+    }
 
     return {
         name: 'choroplethCsv',
@@ -531,41 +572,176 @@ var choroplethCsv = (function (csvUrl) {
         },
         data: function data(_data) {
             if (_data) {
-                _.choropleth = _data;
+                _.data = _data;
+                _.data.getPath = getPath;
+                _.data.updatePath = updatePath;
             } else {
-                return _.choropleth;
+                return _.data;
             }
         },
         mergeData: function mergeData(json, arr) {
-            var cn = _.choropleth;
+            var cn = _.data;
             var id = arr[0].split(':');
             var vl = arr[1].split(':');
             json.features.forEach(function (obj) {
-                var o = cn.find(function (x) {
-                    return '' + obj[id[0]] === x[id[1]];
+                var o = cn.find(function (src) {
+                    return getPath.call(obj, id[0]) === getPath.call(src, id[1]);
                 });
                 if (o) {
-                    obj[vl[0]] = o[vl[1]];
+                    var v = getPath.call(o, vl[1]);
+                    updatePath.call(obj, vl[0], v);
                 }
             });
         },
 
         // https://github.com/d3/d3-scale-chromatic
         colorize: function colorize(key) {
-            var scheme = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'schemeReds';
+            var schemeKey = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : scheme;
 
-            var arr = _.choropleth.map(function (x) {
-                return +x[key];
+            var value = void 0,
+                colorList = d3[schemeKey][9];
+            if (arguments.length === 2) {
+
+                var arr = _.data.map(function (x) {
+                    return +x[key];
+                });
+                arr = [].concat(toConsumableArray(new Set(arr)));
+                var r = [1, 8];
+                _.scheme = schemeKey;
+                _.minMax = d3.extent(arr);
+                _.range = d3.range.apply(d3, r); //_.scale(2990000) - 2
+                _.scale = d3.scaleLinear().domain(_.minMax).rangeRound(r);
+                _.color = d3.scaleThreshold().domain(_.range).range(colorList);
+                _.colorValues = colorList.map(function (color, id) {
+                    value = Math.floor(_.scale.invert(id + 1.45));
+                    return { id: id, color: color, value: value, totalValue: 0 };
+                });
+                _.data.forEach(function (obj) {
+                    var vl = +obj[key];
+                    var id = _.scale(vl);
+                    obj.color = _.color(id);
+                    obj.colorId = id - 1;
+                    _.colorValues[obj.colorId].totalValue += vl;
+                });
+            }
+            return _.colorValues;
+        },
+        colorScale: function colorScale(value) {
+            var result = void 0;
+            if (value !== undefined) {
+                result = _.color(_.scale(+value));
+            } else {
+                result = { color: _.color, scale: _.scale, minMax: _.minMax };
+            }
+            return result;
+        },
+        setCss: function setCss(target, fl) {
+            var hiden = void 0;
+            if (fl === undefined && _.selectedColorId !== null) {
+                fl = _.selectedColorId;
+            }
+            var texts = _.data.map(function (x) {
+                if (fl === undefined || fl === x.colorId || fl === x.cid) {
+                    hiden = 'opacity:1;fill:' + x.color + ';stroke:black';
+                } else {
+                    hiden = '';
+                }
+                return '.countries path.cid-' + x.cid + ' {' + hiden + ';}';
             });
-            arr = [].concat(toConsumableArray(new Set(arr)));
-            _.min = d3.min(arr);
-            _.max = d3.max(arr);
-            var c = d3[scheme] || d3.schemeReds;
-            var x = d3.scaleLinear().domain([1, 10]).rangeRound([_.min, _.max]);
-            var color = d3.scaleThreshold().domain(d3.range(2, 10)).range(c[9]);
-            _.choropleth.forEach(function (obj) {
-                obj.color = color(x(+obj[key]));
+            if (target) {
+                _.targetCss = target;
+            }
+            d3.select(_.targetCss).text(texts.join("\n"));
+        },
+        setColorcountries: function setColorcountries(colorId) {
+            var selector = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'body';
+            var format = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '.1f';
+
+            var data = _.me.countries();
+            var f = d3.format(format);
+            d3.select(selector + ' .color-countries').remove();
+            var colorCountries = d3.select(selector).append('div').attr('class', 'color-countries');
+            colorCountries.append('div').attr('class', 'color-countries-title');
+            var colorList = data.filter(function (x) {
+                var value = x.properties.value;
+
+                var vscale = _.scale(value);
+                return vscale - 1 === colorId;
             });
+            colorList.sort(function (a, b) {
+                return b.properties.value - a.properties.value;
+            });
+            colorCountries.selectAll('div.color-countries-item').data(colorList).enter().append('div').attr('class', function (d) {
+                return 'color-countries-item cid-' + d.properties.cid;
+            }).attr('data-cid', function (d) {
+                return d.properties.cid;
+            }).html(function (d) {
+                var _d$properties = d.properties,
+                    cid3 = _d$properties.cid3,
+                    name = _d$properties.name,
+                    value = _d$properties.value;
+
+                return name + ': ' + f(value) + ' - ' + (cid3 ? cid3 : '&nbsp;-&nbsp;');
+            });
+            colorCountries.on('mouseover', function () {
+                _.me.setCss(_.targetCss, d3.event.target.dataset.cid);
+            }).on('mouseout', function () {
+                _.me.setCss(_.targetCss);
+            });
+        },
+        setColorRange: function setColorRange() {
+            var selector = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'body';
+            var format = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '.1f';
+
+            var data = _.me.colorize();
+            var f = d3.format(format);
+            data.sort(function (a, b) {
+                return b.value - a.value;
+            });
+            d3.select(selector + ' .color-range').remove();
+            var colorRange = d3.select(selector).append('div').attr('class', 'color-range');
+            colorRange.append('div').attr('class', 'color-range-title');
+            var colorList = data.filter(function (x) {
+                return x.totalValue !== 0;
+            });
+            _.colorItems = colorRange.selectAll('div.color-range-item').data(colorList).enter().append('div').attr('class', function (d) {
+                return 'color-range-item s-' + d.id;
+            }).style('background', function (d) {
+                return d.color;
+            }).text(function (d) {
+                return f(d.totalValue);
+            });
+            _.colorItems.on('click', function (data) {
+                _.me.setSelectedColor(data.id);
+            }).on('mouseover', function (data) {
+                _.me.setCss(_.targetCss, data.id);
+                _.me.setColorcountries(data.id);
+            }).on('mouseout', function () {
+                _.me.setCss(_.targetCss);
+                if (_.selectedColorId === null) {
+                    _.me.setColorcountries(-2);
+                } else {
+                    _.me.setColorcountries(_.selectedColorId);
+                }
+            });
+        },
+        setSelectedColor: function setSelectedColor(colorId) {
+            _.colorItems.classed('selected', false);
+            if (_.selectedColorId !== colorId) {
+                _.colorItems.filter('.s-' + colorId).classed('selected', true);
+            } else {
+                colorId = null;
+            }
+            _.selectedColorId = colorId;
+            _.me.setColorcountries(colorId);
+            _.me.setCss(_.targetCss);
+        },
+        countries: function countries(arr) {
+            if (arr) {
+                _.countries.features = arr;
+            } else {
+                return _.countries.features;
+            }
         }
     };
 });
@@ -785,7 +961,7 @@ var hoverCanvas = (function () {
         },
         onCreate: function onCreate() {
             if (this.worldJson && !_.world) {
-                _.me.allData(this.worldJson.allData());
+                _.me.data(this.worldJson.data());
             }
         },
         onCircle: function onCircle(obj) {
@@ -917,7 +1093,7 @@ var clickCanvas = (function () {
         },
         onCreate: function onCreate() {
             if (this.worldJson && !_.world) {
-                _.me.allData(this.worldJson.allData());
+                _.me.data(this.worldJson.data());
             }
         },
         onCircle: function onCircle(obj) {
@@ -1375,7 +1551,7 @@ var countryCanvas = (function (worldUrl) {
         },
         onCreate: function onCreate() {
             if (this.worldJson && !_.world) {
-                _.me.allData(this.worldJson.allData());
+                _.me.data(this.worldJson.data());
             }
             create.call(this);
         },
@@ -1416,6 +1592,8 @@ var threejsPlugin = (function () {
 
     /*eslint no-console: 0 */
     var _ = { renderer: null, scene: null, camera: null };
+    var manager = new THREE.LoadingManager();
+    var loader = new THREE.TextureLoader(manager);
     var SCALE = void 0;
 
     // Converts a point [longitude, latitude] in degrees to a THREE.Vector3.
@@ -1480,6 +1658,7 @@ var threejsPlugin = (function () {
 
     function _rotate(obj) {
         var direct = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+        var delay = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0;
 
         if (!obj) {
             obj = _.group;
@@ -1490,7 +1669,7 @@ var threejsPlugin = (function () {
         var q1 = __.versor(rt);
         var q2 = new THREE.Quaternion(-q1[2], q1[1], q1[3], q1[0]);
         obj.setRotationFromQuaternion(q2);
-        _renderThree.call(this, direct);
+        _renderThree.call(this, direct, false, delay);
     }
 
     var renderThreeX = null;
@@ -1519,7 +1698,7 @@ var threejsPlugin = (function () {
         },
         onCreate: function onCreate() {
             _.group.children = [];
-            _renderThree.call(this, false, _rotate);
+            _rotate.call(this);
         },
         onRefresh: function onRefresh() {
             _rotate.call(this, null, true);
@@ -1544,6 +1723,11 @@ var threejsPlugin = (function () {
         },
         wireframe: function wireframe(multilinestring, material) {
             return _wireframe(multilinestring, material);
+        },
+        texture: function texture(imgUrl) {
+            return loader.load(imgUrl, function (image) {
+                return image;
+            });
         },
         renderThree: function renderThree() {
             _renderThree.call(this);
@@ -1634,7 +1818,7 @@ var dblClickCanvas = (function () {
         },
         onCreate: function onCreate() {
             if (this.worldJson && !_.world) {
-                _.me.allData(this.worldJson.allData());
+                _.me.data(this.worldJson.data());
             }
         },
         onCircle: function onCircle(obj) {
@@ -1873,6 +2057,173 @@ var barSvg = (function (urlBars) {
         },
         $bar: function $bar() {
             return $.bar;
+        }
+    };
+});
+
+var mapSvg = (function (worldUrl) {
+    /*eslint no-console: 0 */
+    var _ = {
+        q: null,
+        svg: null,
+        world: null,
+        land: null,
+        onCountry: {},
+        onCountryVals: [],
+        selectedCountry: null,
+        lakes: { type: 'FeatureCollection', features: [] },
+        selected: { type: 'FeatureCollection', features: [] },
+        countries: { type: 'FeatureCollection', features: [] }
+    };
+    var $ = {};
+    var mapTooltip = d3.select('body').append('div').attr('class', 'ej-country-tooltip');
+
+    function init() {
+        _.svg = this._.svg;
+        var _$options = this._.options,
+            width = _$options.width,
+            height = _$options.height;
+
+        var scale = width / 6.279;
+        var zoom = d3.zoom().on('zoom', function () {
+            return $.g.attr('transform', d3.event.transform);
+        });
+        _.proj = d3.geoEquirectangular().scale(scale).translate([width / 2, height / 2]);
+        _.path = d3.geoPath().projection(_.proj).context(_.context);
+        _.svg.call(zoom);
+    }
+
+    function show(data, tooltip) {
+        var props = data.properties;
+        var title = Object.keys(props).map(function (k) {
+            return k + ': ' + props[k];
+        }).join('<br/>');
+        return tooltip.html(title);
+    }
+
+    function create() {
+        var _this = this;
+        _.svg.selectAll('.countries').remove();
+        if (this._.options.showMap) {
+            $.g = _.svg.append('g').attr('class', 'countries');
+            $.countries = $.g.selectAll('path').data(_.countries.features).enter().append('path').attr('class', function (d) {
+                return 'cid-' + d.properties.cid;
+            }).attr('id', function (d) {
+                return 'x' + d.id;
+            });
+
+            $.countries.on('click', function (d) {
+                var _this2 = this;
+
+                if (_this.choroplethCsv) {
+                    var oscale = -1;
+                    var v = _this.choroplethCsv.colorScale();
+                    var vscale = v.scale(d.properties.value);
+                    if (_.selectedCountry) {
+                        oscale = v.scale(_.selectedCountry.properties.value);
+                    }
+                    if (oscale !== vscale || _.selectedCountry === d) {
+                        _this.choroplethCsv.setSelectedColor(vscale - 1);
+                    }
+                }
+                $.countries.classed('selected', false);
+                if (_.selectedCountry !== d) {
+                    _.selectedCountry = d;
+                    $.countries.filter('#x' + d.id).classed('selected', true);
+                } else {
+                    _.selectedCountry = null;
+                }
+                _.onCountryVals.forEach(function (v) {
+                    v.call(_this2, d3.event, d);
+                });
+            }).on('mouseover', function (data) {
+                var _d3$event = d3.event,
+                    pageX = _d3$event.pageX,
+                    pageY = _d3$event.pageY;
+
+                (_.me.show || show)(data, mapTooltip).style('display', 'block').style('left', pageX + 7 + 'px').style('top', pageY - 15 + 'px');
+            }).on('mouseout', function () {
+                mapTooltip.style('display', 'none');
+            }).on('mousemove', function () {
+                var _d3$event2 = d3.event,
+                    pageX = _d3$event2.pageX,
+                    pageY = _d3$event2.pageY;
+
+                mapTooltip.style('left', pageX + 7 + 'px').style('top', pageY - 15 + 'px');
+            });
+            refresh.call(this);
+        }
+    }
+
+    function refresh() {
+        var __ = this._;
+        if (__.options.showMap) {
+            $.countries.attr('d', _.path);
+        }
+    }
+
+    return {
+        name: 'mapSvg',
+        urls: worldUrl && [worldUrl],
+        onReady: function onReady(err, data) {
+            _.me.data(data);
+        },
+        onInit: function onInit(me) {
+            _.me = me;
+            var __ = this._;
+            var options = __.options;
+            options.showMap = true;
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            if (this.worldJson && !_.world) {
+                _.me.allData(this.worldJson.allData());
+            }
+            create.call(this);
+        },
+        onRefresh: function onRefresh() {
+            refresh.call(this);
+        },
+        onCountry: function onCountry(obj) {
+            Object.assign(_.onCountry, obj);
+            _.onCountryVals = Object.keys(_.onCountry).map(function (k) {
+                return _.onCountry[k];
+            });
+        },
+        selectedCountry: function selectedCountry() {
+            return _.selectedCountry;
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.world = _data;
+                _.land = topojson.feature(_data, _data.objects.land);
+                _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
+                _.countries.features = topojson.feature(_data, _data.objects.countries).features;
+            } else {
+                return _.world;
+            }
+        },
+        allData: function allData(all) {
+            if (all) {
+                _.world = all.world;
+                _.land = all.land;
+                _.lakes = all.lakes;
+                _.countries = all.countries;
+            } else {
+                var world = _.world,
+                    land = _.land,
+                    lakes = _.lakes,
+                    countries = _.countries;
+
+                return { world: world, land: land, lakes: lakes, countries: countries };
+            }
+        },
+        selectAll: function selectAll(q) {
+            if (q) {
+                _.q = q;
+                _.svg = d3.selectAll(q);
+            }
+            return _.svg;
         }
     };
 });
@@ -3298,7 +3649,7 @@ var worldCanvas = (function (worldUrl) {
                         this.canvasPlugin.render(function (context, path) {
                             context.beginPath();
                             path(_.selected);
-                            context.fillStyle = _.style.selected || 'rgba(87, 255, 99, 0.4)';
+                            context.fillStyle = _.style.selected || 'rgba(87, 255, 99, 0.5)';
                             context.fill();
                         }, _.drawTo, _.options);
                     } else {
@@ -3343,7 +3694,7 @@ var worldCanvas = (function (worldUrl) {
                     this.canvasPlugin.render(function (context, path) {
                         context.beginPath();
                         path(country);
-                        context.fillStyle = _.style.hover || 'rgba(117, 0, 0, 0.4)';
+                        context.fillStyle = _.style.hover || 'rgba(117, 0, 0, 0.5)';
                         context.fill();
                     }, _.drawTo, _.options);
                 }
@@ -3380,7 +3731,7 @@ var worldCanvas = (function (worldUrl) {
         this.canvasPlugin.render(function (context, path) {
             context.beginPath();
             path(_.lakes);
-            context.fillStyle = _.style.lakes || 'rgba(80, 87, 97, 0.4)';
+            context.fillStyle = _.style.lakes || 'rgba(80, 87, 97, 0.5)';
             context.fill();
         }, _.drawTo, _.options);
     }
@@ -3577,6 +3928,9 @@ var centerCanvas = (function () {
                         transition.call(_this, d3.geoCentroid(country));
                         if (typeof _.focused === 'function') {
                             _.focused.call(_this, event, country);
+                            if (_this.threejsPlugin) {
+                                _this.threejsPlugin.rotate();
+                            }
                         }
                     }
                 }
@@ -4395,22 +4749,17 @@ var iconsThreejs = (function (jsonUrl, iconUrl) {
     }
 
     function init() {
-        var _this = this;
-
         var tj = this.threejsPlugin;
         this._.options.showIcons = true;
-        var loader = new THREE.TextureLoader();
-        loader.load(iconUrl, function (map) {
-            _.material = new THREE.MeshPhongMaterial({
-                side: THREE.DoubleSide,
-                transparent: true,
-                map: map
-            });
-            if (_.data && !_.loaded) {
-                loadIcons.call(_this);
-                tj.rotate();
-            }
+        _.material = new THREE.MeshPhongMaterial({
+            side: THREE.DoubleSide,
+            transparent: true,
+            map: tj.texture(iconUrl)
         });
+        if (_.data && !_.loaded) {
+            loadIcons.call(this);
+            tj.rotate();
+        }
     }
 
     function create() {
@@ -4472,12 +4821,11 @@ var canvasThreejs = (function (worldUrl) {
         style: {},
         onDraw: {},
         onDrawVals: [],
-        selected: {
-            type: 'FeatureCollection',
-            features: []
-        },
+        countries: { type: 'FeatureCollection', features: [] },
+        selected: { type: 'FeatureCollection', features: [] },
         material: new THREE.MeshBasicMaterial({
             side: THREE.DoubleSide,
+            transparent: true,
             alphaTest: 0.5
         })
     };
@@ -4486,14 +4834,14 @@ var canvasThreejs = (function (worldUrl) {
         var width = height * 2;
         var SCALE = this._.proj.scale();
         _.geometry = new THREE.SphereGeometry(SCALE, 30, 30);
-        _.newCanvas = document.createElement('canvas');
+        _.newCanvas = d3.select('body').append('canvas') // document.createElement('canvas');
+        .style('display', 'none').attr('class', 'ej-canvas-new').node();
         _.newContext = _.newCanvas.getContext('2d');
-
         _.texture = new THREE.Texture(_.newCanvas);
         _.texture.transparent = true;
         _.material.map = _.texture;
 
-        _.canvas = d3.select('body').append('canvas').style('position', 'absolute').style('display', 'none').style('top', '450px').attr('width', width).attr('height', height).attr('id', 'tjs-canvas').node();
+        _.canvas = d3.select('body').append('canvas').style('display', 'none').attr('width', width).attr('height', height).attr('class', 'ej-canvas-ctx').node();
         _.context = _.canvas.getContext('2d');
         _.proj = d3.geoEquirectangular().scale(width / scw).translate([width / 2, height / 2]);
         _.path = d3.geoPath().projection(_.proj).context(_.context);
@@ -4502,6 +4850,7 @@ var canvasThreejs = (function (worldUrl) {
         //set dimensions
         _.newCanvas.width = _.canvas.width;
         _.newCanvas.height = _.canvas.height;
+        _.me._ = _; // only for debugging
     }
 
     function create() {
@@ -4528,13 +4877,13 @@ var canvasThreejs = (function (worldUrl) {
                 var obj = _.countries.features[i];
                 _.context.beginPath();
                 _.path(obj);
-                _.context.fillStyle = obj.color || '#8f9fc1'; //"rgb(" + (i+1) + ",0,0)";
+                _.context.fillStyle = obj.properties.color || _.style.countries || 'rgba(2, 20, 37,0.8)';
                 _.context.fill();
             }
             return true;
         } else {
             _.path(_.countries);
-            _.context.fillStyle = '#8f9fc1'; // '#00ff00';
+            _.context.fillStyle = _.style.countries || 'rgba(2, 20, 37,0.8)';
             _.context.fill();
             return false;
         }
@@ -4550,19 +4899,19 @@ var canvasThreejs = (function (worldUrl) {
         } else {
             _.context.clearRect(0, 0, _.canvas.width, _.canvas.height);
         }
-        var crp = true;
+        var border = o.showBorder;
         _.context.beginPath();
-        if (!o.showBorder) {
-            crp = choropleth.call(this);
+        if (!border) {
+            choropleth.call(this);
         }
         if (o.showBorder || o.showBorder === undefined) {
             var sc = scale10(this._.proj.scale());
             if (sc < 1) sc = 1;
-            if (crp) {
-                _.path(_.countries);
+            if (border) {
+                _.path(_.allCountries);
             }
             _.context.lineWidth = sc;
-            _.context.strokeStyle = _.style.countries || 'rgb(239, 237, 234)'; //'rgb(0, 37, 34)';
+            _.context.strokeStyle = _.style.border || 'rgb(239, 237, 234)';
             _.context.stroke();
         }
         //apply the old canvas to the new one
@@ -4578,7 +4927,7 @@ var canvasThreejs = (function (worldUrl) {
             if (_.selected.features.length > 0) {
                 _.newContext.beginPath();
                 _.path2(_.selected);
-                _.newContext.fillStyle = _.style.selected || 'rgba(255, 235, 0, 0.4)'; // 'rgba(87, 255, 99, 0.4)';
+                _.newContext.fillStyle = _.style.selected || 'rgba(87, 255, 99, 0.5)'; // 0.4 'rgba(255, 235, 0, 0.4)'; // 'rgba(87, 255, 99, 0.4)';
                 _.newContext.fill();
             }
 
@@ -4590,7 +4939,7 @@ var canvasThreejs = (function (worldUrl) {
             })) {
                 _.newContext.beginPath();
                 _.path2(country);
-                _.newContext.fillStyle = _.style.hover || 'rgba(117, 0, 0, 0.4)'; //'rgb(137, 138, 34)';
+                _.newContext.fillStyle = _.style.hover || 'rgba(117, 0, 0, 0.5)'; // 0.4 'rgb(137, 138, 34)';
                 _.newContext.fill();
             }
             _.texture.needsUpdate = true;
@@ -4610,7 +4959,7 @@ var canvasThreejs = (function (worldUrl) {
         },
         onCreate: function onCreate() {
             if (this.worldJson && !_.world) {
-                _.me.allData(this.worldJson.allData());
+                _.me.data(this.worldJson.data());
             }
             create.call(this);
         },
@@ -4626,6 +4975,13 @@ var canvasThreejs = (function (worldUrl) {
                 return _.onDraw[k];
             });
         },
+        countries: function countries(arr) {
+            if (arr) {
+                _.countries.features = arr;
+            } else {
+                return _.countries.features;
+            }
+        },
         selectedCountries: function selectedCountries(arr) {
             if (arr) {
                 _.selected.features = arr;
@@ -4636,7 +4992,8 @@ var canvasThreejs = (function (worldUrl) {
         data: function data(_data) {
             if (_data) {
                 _.world = _data;
-                _.countries = topojson.feature(_data, _data.objects.countries);
+                _.allCountries = topojson.feature(_data, _data.objects.countries);
+                _.countries.features = _.allCountries.features;
             } else {
                 return _.world;
             }
@@ -4657,6 +5014,10 @@ var canvasThreejs = (function (worldUrl) {
                 _.style = s;
             }
             return _.style;
+        },
+        reload: function reload() {
+            resize.call(this);
+            _refresh.call(this);
         },
         refresh: function refresh() {
             _.refresh = true;
@@ -5138,7 +5499,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
                 // resolution: resolution,
                 // sizeAttenuation: true,
             });
-            for (var j = 0; j < curve_length; ++j) {
+            for (var j = 0; j <= curve_length; ++j) {
                 var i_curve = j * 3;
 
                 var _spline$getPoint = spline.getPoint(j / curve_length),
@@ -5226,12 +5587,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
 
     function init() {
         _.SCALE = this._.proj.scale();
-        var manager = new THREE.LoadingManager();
-        var loader = new THREE.TextureLoader(manager);
-        this._.options.showFlightLine = true;
-        _.texture = loader.load(imgUrl, function (point_texture) {
-            return point_texture;
-        });
+        _.texture = this.threejsPlugin.texture(imgUrl);
     }
 
     function create() {
@@ -5296,6 +5652,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
         onInit: function onInit(me) {
             _.me = me;
             init.call(this);
+            this._.options.showFlightLine = true;
         },
         onResize: function onResize() {
             resize.call(this);
@@ -5477,23 +5834,43 @@ var oceanThreejs = (function (color) {
     };
 });
 
+// https://threejs.org/docs/#api/materials/Material
 var imageThreejs = (function () {
-    var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.png';
+    var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../globe/world.png';
 
     /*eslint no-console: 0 */
     var _ = { sphereObject: null };
+
+    function init() {
+        var tj = this.threejsPlugin;
+        _.material = new THREE.MeshBasicMaterial({
+            map: tj.texture(imgUrl)
+        });
+        Object.defineProperty(_.me, 'transparent', {
+            get: function get() {
+                return _.transparent;
+            },
+            set: function set(x) {
+                _.transparent = x;
+                if (x) {
+                    _.material.side = THREE.DoubleSide;
+                    _.material.alphaTest = 0.01;
+                } else {
+                    _.material.side = THREE.FrontSide;
+                    _.material.alphaTest = 0;
+                }
+                _.material.needsUpdate = true;
+            }
+        });
+    }
 
     function create() {
         var tj = this.threejsPlugin;
         if (!_.sphereObject) {
             var SCALE = this._.proj.scale();
-            var loader = new THREE.TextureLoader();
-            loader.load(imgUrl, function (map) {
-                var geometry = new THREE.SphereGeometry(SCALE, 30, 30);
-                var material = new THREE.MeshBasicMaterial({ map: map });
-                _.sphereObject = new THREE.Mesh(geometry, material);
-                tj.addGroup(_.sphereObject);
-            });
+            var geometry = new THREE.SphereGeometry(SCALE, 30, 30);
+            _.sphereObject = new THREE.Mesh(geometry, _.material);
+            tj.addGroup(_.sphereObject);
         } else {
             tj.addGroup(_.sphereObject);
         }
@@ -5503,7 +5880,8 @@ var imageThreejs = (function () {
         name: 'imageThreejs',
         onInit: function onInit(me) {
             _.me = me;
-            this._.options.showImage = true;
+            _.transparent = false;
+            init.call(this);
         },
         onCreate: function onCreate() {
             create.call(this);
@@ -5515,7 +5893,7 @@ var imageThreejs = (function () {
 });
 
 var worldThreejs = (function () {
-    var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.png';
+    var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../globe/world.png';
 
     /*eslint no-console: 0 */
     var _ = {
@@ -5566,9 +5944,9 @@ var worldThreejs = (function () {
 });
 
 var globeThreejs = (function () {
-    var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.jpg';
-    var elvUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../d/elevation.jpg';
-    var wtrUrl = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '../d/water.png';
+    var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../globe/world.jpg';
+    var elvUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/elevation.jpg';
+    var wtrUrl = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '../globe/water.png';
 
     /*eslint no-console: 0 */
     var _ = {
@@ -5576,8 +5954,6 @@ var globeThreejs = (function () {
         onHover: {},
         onHoverVals: []
     };
-    var manager = new THREE.LoadingManager();
-    var loader = new THREE.TextureLoader(manager);
 
     function init() {
         this._.options.showGlobe = true;
@@ -5587,15 +5963,9 @@ var globeThreejs = (function () {
         var tj = this.threejsPlugin;
         if (!_.sphereObject) {
             var SCALE = this._.proj.scale();
-            var earth_img = loader.load(imgUrl, function (image) {
-                return image;
-            });
-            var elevt_img = loader.load(elvUrl, function (image) {
-                return image;
-            });
-            var water_img = loader.load(wtrUrl, function (image) {
-                return image;
-            });
+            var earth_img = tj.texture(imgUrl);
+            var elevt_img = tj.texture(elvUrl);
+            var water_img = tj.texture(wtrUrl);
             var geometry = new THREE.SphereGeometry(SCALE, 30, 30);
             var material = new THREE.MeshPhongMaterial({
                 map: earth_img,
@@ -5669,12 +6039,10 @@ var globeThreejs = (function () {
 });
 
 var sphereThreejs = (function () {
-  var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.png';
+  var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../globe/world.png';
 
   /*eslint no-console: 0 */
   var _ = { sphereObject: null };
-  var manager = new THREE.LoadingManager();
-  var loader = new THREE.TextureLoader(manager);
   var Shaders = {
     'earth': {
       uniforms: {
@@ -5697,9 +6065,7 @@ var sphereThreejs = (function () {
       var geometry = new THREE.SphereGeometry(SCALE, 30, 30);
       var uniforms1 = THREE.UniformsUtils.clone(Shaders.earth.uniforms);
       var uniforms2 = THREE.UniformsUtils.clone(Shaders.atmosphere.uniforms);
-      uniforms1['texture'].value = loader.load(imgUrl, function (image) {
-        return image;
-      });
+      uniforms1['texture'].value = tj.texture(imgUrl);
 
       var mesh1 = new THREE.Mesh(geometry, new THREE.ShaderMaterial({
         uniforms: uniforms1,
@@ -5739,12 +6105,12 @@ var sphereThreejs = (function () {
     sphere: function sphere() {
       return _.sphereObject;
     },
-    imgSrc: function imgSrc(umgUrl) {
+    imgSrc: function imgSrc(imgUrl) {
+      var tj = this.threejsPlugin;
+
       var material = _.me.sphere().children[0].material;
 
-      material.uniforms.texture.value = loader.load(umgUrl, function (image) {
-        return image;
-      });
+      material.uniforms.texture.value = tj.texture(imgUrl);
       material.needsUpdate = true;
     }
   };
@@ -5854,7 +6220,7 @@ if (window.THREE) {
 // import data from './globe';
 var world3d = (function () {
     var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.geometry.json';
-    var landUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../d/gold.jpg';
+    var landUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/gold.jpg';
     var rtt = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : -1.57;
 
     /*eslint no-console: 0 */
@@ -5874,7 +6240,7 @@ var world3d = (function () {
         this._.options.showWorld = true;
         _.sphereObject.rotation.y = rtt;
         _.sphereObject.scale.set(r, r, r);
-        makeEnvMapMaterial(landUrl, function (material) {
+        makeEnvMapMaterial.call(this, landUrl, function (material) {
             _.material = material;
             if (_.world && !_.loaded) {
                 loadCountry();
@@ -5893,14 +6259,12 @@ var world3d = (function () {
     var vertexShader = '\n    varying vec2 vN;\n    void main() {\n        vec4 p = vec4( position, 1. );\n        vec3 e = normalize( vec3( modelViewMatrix * p ) );\n        vec3 n = normalize( normalMatrix * normal );\n        vec3 r = reflect( e, n );\n        float m = 2. * length( vec3( r.xy, r.z + 1. ) );\n        vN = r.xy / m + .5;\n        gl_Position = projectionMatrix * modelViewMatrix * p;\n    }\n    ';
     var fragmentShader = '\n    uniform sampler2D tMatCap;\n    varying vec2 vN;\n    void main() {\n        vec3 base = texture2D( tMatCap, vN ).rgb;\n        gl_FragColor = vec4( base, 1. );\n    }\n    ';
     function makeEnvMapMaterial(imgUrl, cb) {
-        var loader = new THREE.TextureLoader();
-        loader.load(imgUrl, function (value) {
-            var type = 't';
-            var shading = THREE.SmoothShading;
-            var uniforms = { tMatCap: { type: type, value: value } };
-            var material = new THREE.ShaderMaterial({ shading: shading, uniforms: uniforms, vertexShader: vertexShader, fragmentShader: fragmentShader });
-            cb.call(this, material);
-        });
+        var type = 't';
+        var tj = this.threejsPlugin;
+        var shading = THREE.SmoothShading;
+        var uniforms = { tMatCap: { type: type, value: tj.texture(imgUrl) } };
+        var material = new THREE.ShaderMaterial({ shading: shading, uniforms: uniforms, vertexShader: vertexShader, fragmentShader: fragmentShader });
+        cb.call(this, material);
     }
 
     return {
@@ -5935,7 +6299,7 @@ var world3d = (function () {
 // view-source:http://callumprentice.github.io/apps/extruded_earth/index.html
 var world3d2 = (function () {
     var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/countries.geo.json';
-    var landUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../d/gold.jpg';
+    var landUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/gold.jpg';
     var inner = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0.9;
     var outer = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : 0;
     var rtt = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : 0;
@@ -6018,7 +6382,7 @@ var world3d2 = (function () {
         this._.options.showWorld = true;
         _.sphereObject.rotation.y = rtt;
         _.sphereObject.scale.set(r, r, r);
-        makeEnvMapMaterial(landUrl, function (material) {
+        makeEnvMapMaterial.call(this, landUrl, function (material) {
             _.material = material;
             if (_.world && !_.loaded) {
                 loadCountry();
@@ -6037,18 +6401,16 @@ var world3d2 = (function () {
     var vertexShader = '\n    varying vec2 vN;\n    void main() {\n        vec4 p = vec4( position, 1. );\n        vec3 e = normalize( vec3( modelViewMatrix * p ) );\n        vec3 n = normalize( normalMatrix * normal );\n        vec3 r = reflect( e, n );\n        float m = 2. * length( vec3( r.xy, r.z + 1. ) );\n        vN = r.xy / m + .5;\n        gl_Position = projectionMatrix * modelViewMatrix * p;\n    }\n    ';
     var fragmentShader = '\n    uniform sampler2D tMatCap;\n    varying vec2 vN;\n    void main() {\n        vec3 base = texture2D( tMatCap, vN ).rgb;\n        gl_FragColor = vec4( base, 1. );\n    }\n    ';
     function makeEnvMapMaterial(imgUrl, cb) {
-        var loader = new THREE.TextureLoader();
-        loader.load(imgUrl, function (value) {
-            var type = 't';
-            var uniforms = { tMatCap: { type: type, value: value } };
-            var material = new THREE.ShaderMaterial({
-                uniforms: uniforms,
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
-                shading: THREE.SmoothShading
-            });
-            cb.call(this, material);
+        var type = 't';
+        var tj = this.threejsPlugin;
+        var uniforms = { tMatCap: { type: type, value: tj.texture(imgUrl) } };
+        var material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            shading: THREE.SmoothShading
         });
+        cb.call(this, material);
     }
 
     return {
@@ -6283,6 +6645,94 @@ var selectCountryMix = (function () {
     };
 });
 
+var selectCountryMix2 = (function () {
+    var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world-110m.json';
+    var worldImg = arguments[1];
+
+    /*eslint no-console: 0 */
+    var _ = {};
+
+    function init() {
+        var g = this.register(earthjs.plugins.worldJson(worldUrl)).register(earthjs.plugins.mousePlugin()).register(earthjs.plugins.hoverCanvas()).register(earthjs.plugins.clickCanvas()).register(earthjs.plugins.centerCanvas()).register(earthjs.plugins.countryCanvas()).register(earthjs.plugins.threejsPlugin()).register(earthjs.plugins.autorotatePlugin());
+        if (worldImg) {
+            g.register(earthjs.plugins.imageThreejs(worldImg));
+        }
+        g.register(earthjs.plugins.canvasThreejs());
+        g._.options.showSelectedCountry = true;
+        g._.options.showBorder = false;
+        g.canvasThreejs.style({ countries: 'rgba(220,91,52,0.5)' });
+        g.centerCanvas.focused(function (event, country) {
+            g.autorotatePlugin.stop();
+            if (event.metaKey) {
+                var arr = g.canvasThreejs.selectedCountries().concat(country);
+                g.canvasThreejs.selectedCountries(arr);
+            } else {
+                g.canvasThreejs.selectedCountries([country]);
+            }
+            g.canvasThreejs.refresh();
+            console.log(country);
+        });
+    }
+
+    return {
+        name: 'selectCountryMix2',
+        onInit: function onInit(me) {
+            _.me = me;
+            init.call(this);
+        },
+        region: function region(arr, centeroid) {
+            var g = this;
+            var reg = g.canvasThreejs.countries().filter(function (x) {
+                return arr.indexOf(x.id) > -1;
+            });
+            g.canvasThreejs.selectedCountries(reg);
+            g.autorotatePlugin.stop();
+            if (centeroid) {
+                g.centerCanvas.go(centeroid);
+            }
+        },
+        multiRegion: function multiRegion(mregion, centeroid) {
+            var reg = [];
+            var g = this;
+            var _iteratorNormalCompletion = true;
+            var _didIteratorError = false;
+            var _iteratorError = undefined;
+
+            try {
+                for (var _iterator = mregion[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                    var obj = _step.value;
+
+                    var arr = g.canvasThreejs.countries().filter(function (x) {
+                        var bool = obj.countries.indexOf(x.id) > -1;
+                        if (bool) x.color = obj.color;
+                        return bool;
+                    });
+                    reg = reg.concat(arr);
+                }
+            } catch (err) {
+                _didIteratorError = true;
+                _iteratorError = err;
+            } finally {
+                try {
+                    if (!_iteratorNormalCompletion && _iterator.return) {
+                        _iterator.return();
+                    }
+                } finally {
+                    if (_didIteratorError) {
+                        throw _iteratorError;
+                    }
+                }
+            }
+
+            g.canvasThreejs.selectedCountries(reg, true);
+            g.autorotatePlugin.stop();
+            if (centeroid) {
+                g.centerCanvas.go(centeroid);
+            }
+        }
+    };
+});
+
 earthjs$2.plugins = {
     baseCsv: baseCsv,
     worldJson: worldJson,
@@ -6320,6 +6770,7 @@ earthjs$2.plugins = {
     placesSvg: placesSvg,
     worldSvg: worldSvg,
     barSvg: barSvg,
+    mapSvg: mapSvg,
     dotsSvg: dotsSvg,
     pingsSvg: pingsSvg,
     pinCanvas: pinCanvas,
@@ -6347,7 +6798,8 @@ earthjs$2.plugins = {
     world3d2: world3d2,
 
     commonPlugins: commonPlugins,
-    selectCountryMix: selectCountryMix
+    selectCountryMix: selectCountryMix,
+    selectCountryMix2: selectCountryMix2
 };
 
 return earthjs$2;

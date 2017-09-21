@@ -1,0 +1,36 @@
+<html>
+<head>
+    <style media="screen">
+        .input-area {
+            position: absolute;
+            z-index: 5;
+        }
+    </style>
+    <link type="text/css" rel="stylesheet" href="../css/earthjs.css">
+    <script type='text/javascript' src="../js/d3.min.js"></script>
+    <script type='text/javascript' src="../js/topojson.min.js"></script>
+    <script type='text/javascript' src='../js/earthjs.js'></script>
+</head>
+<body>
+    <div class="input-area">
+        <button onclick="toMap()">To Map</button>
+        <button onclick="toGlobe()">To Globe</button>
+    </div>
+    <svg id="earth-js" class="e1"></svg>
+    <script>
+        const g = earthjs({width:1200, height:750});
+        g.register(earthjs.plugins.mousePlugin());
+        g.register(earthjs.plugins.graticuleSvg());
+        g.register(earthjs.plugins.worldSvg('../d/world-110m.json'));
+        g.register(earthjs.plugins.countryTooltipSvg('../d/world-110m-country-names.tsv'));
+        g.register(earthjs.plugins.flattenSvg());
+        g.register(earthjs.plugins.centerSvg());
+        g.ready(function(){
+            g.create();
+        })
+
+        function toMap() {g.flattenSvg.toMap();}
+        function toGlobe() {g.flattenSvg.toGlobe();}
+    </script>
+</body>
+</html>

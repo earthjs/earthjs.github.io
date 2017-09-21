@@ -1,0 +1,78 @@
+<html>
+<head>
+    <link type="text/css" rel="stylesheet" href="../css/earthjs.css">
+    <script type='text/javascript' src="../js/d3.min.js"></script>
+    <script type='text/javascript' src="../js/topojson.min.js"></script>
+    <script type='text/javascript' src='../js/earthjs.js'></script>
+    <style>
+        .e-container {
+            display: inline-block;
+            position: relative;
+            margin-top: -38px;
+            width: 700px;
+            height: 500px;
+        }
+    </style>
+</head>
+<body>
+    <div class="e-container">
+        <svg    class="ej-svg s1"/>
+        <canvas class="ej-svg c1 ej-canvas"></canvas>
+    </div>
+    <div class="e-container">
+        <svg    class="ej-svg s2"/>
+        <canvas class="ej-svg c2 ej-canvas"></canvas>
+    </div>
+    <div class="e-container">
+        <svg    class="ej-svg s3"/>
+        <canvas class="ej-svg c3 ej-canvas"></canvas>
+    </div>
+    <div class="e-container">
+        <svg    class="ej-svg s4"/>
+        <canvas class="ej-svg c4 ej-canvas"></canvas>
+    </div>
+    <script>
+        const g = earthjs({selector:'.s1,.s2,.s3,.s4',transparent:true,padding:47});
+        g.register(earthjs.plugins.canvasPlugin());
+        g.register(earthjs.plugins.autorotatePlugin());
+        g.register(earthjs.plugins.mousePlugin({intervalDrag:true}));
+        g.register(earthjs.plugins.dropShadowSvg());
+        g.register(earthjs.plugins.oceanSvg());
+        g.register(earthjs.plugins.graticuleCanvas());
+        g.register(earthjs.plugins.worldCanvas('../d/world-110m.json'));
+        g.register(earthjs.plugins.dotsCanvas());
+        g.register(earthjs.plugins.pinCanvas('../data/bars.json', '../images/pin.png'));
+        g.register(earthjs.plugins.fauxGlobeSvg());
+        g.register(earthjs.plugins.barSvg());
+        g._.options.showCountries = false;
+        g._.options.showLakes = false;
+        g.canvasPlugin.selectAll('.ej-canvas');
+        g.pinCanvas.ready = function(err, json) {
+            const features = json.features;
+            const maxMag = features.map(d => d.properties.mag).sort(d3.descending)[0];
+            const scale = d3.scaleLinear().domain([3, maxMag]).range([0.5, 2]);
+            json.features.forEach(d => {
+                d.geometry.value = d.properties.mag
+                d.geometry.radius = scale(d.properties.mag);
+            });
+            json.geometry = {
+                radius: 1,
+                lineWidth: 0.5,
+                fillStyle: 'rgba(100,0,0,.4)',
+                strokeStyle: 'rgba(100,0,0,.6)'
+            }
+            g.dotsCanvas.data(json);
+            g.pinCanvas.data(json);
+            g.barSvg.data(json);
+        };
+        g.oceanSvg.selectAll('.s1,.s2,.s4');
+        g.barSvg.selectAll('.s1');
+        g.pinCanvas.drawTo([1]);
+        g.worldCanvas.drawTo([0,1,2]);
+        g.graticuleCanvas.drawTo([3]);
+        g.ready(function(){
+            g.create();
+        })
+    </script>
+</body>
+</html>

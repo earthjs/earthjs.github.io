@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link type="text/css" rel="stylesheet" href="../css/earthjs.css">
+    <script type='text/javascript' src="../js/d3.min.js"></script>
+    <script type='text/javascript' src="../js/d3-scale-chromatic.v1.min.js"></script>
+    <script type='text/javascript' src='../js/three.min.js'></script>
+    <script type='text/javascript' src="../js/topojson.min.js"></script>
+    <script type='text/javascript' src='../js/earthjs.js'></script>
+    <style>body {background: #555;}</style>
+</head>
+<body>
+    <svg id="earth-js" width="1000" height="920"></svg>
+    <canvas id="three-js"></canvas>
+    <script>
+        var g = earthjs({scale:300})
+        .register(earthjs.plugins.worldJson('../d/world-110m.json'))
+        .register(earthjs.plugins.countryNamesCsv('../d/world-110m-country-names.tsv'))
+        .register(earthjs.plugins.choroplethCsv('../data/2010_alcohol_consumption_by_country.csv'))
+        .register(earthjs.plugins.mousePlugin())
+        .register(earthjs.plugins.hoverCanvas())
+        .register(earthjs.plugins.countryCanvas())
+        .register(earthjs.plugins.threejsPlugin())
+        .register(earthjs.plugins.canvasThreejs())
+        g.canvasThreejs.style({ocean: '#36496e'});
+        g._.options.showSelectedCountry = true;
+        g._.options.choropleth = true;
+        g.ready(function(){
+            const countries = g.worldJson.allData().countries;
+            g.choroplethCsv  .colorize('alcohol', 'schemeOranges'); //schemeReds, https://github.com/d3/d3-scale-chromatic
+            g.choroplethCsv  .mergeData(countries, ['properties.cid:cid', 'properties.color:color']);
+            g.choroplethCsv  .mergeData(countries, ['properties.cid:cid', 'properties.value:alcohol']);
+            g.canvasThreejs.allData(g.worldJson.allData());
+            g.create();
+        })
+    </script>
+</body>
+</html>

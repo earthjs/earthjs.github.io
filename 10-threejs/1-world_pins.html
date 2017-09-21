@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style media="screen">
+        .input-area {
+            position: absolute;
+            z-index: 5;
+        }
+    </style>
+    <link type="text/css" rel="stylesheet" href="../css/earthjs.css">
+    <script type='text/javascript' src="../js/d3.min.js"></script>
+    <script type='text/javascript' src='../js/three.min.js'></script>
+    <script type='text/javascript' src="../js/topojson.min.js"></script>
+    <script type='text/javascript' src='../js/earthjs.js'></script>
+    <style media="screen">
+        .ej-svg {
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="input-area">
+        <input id="pan" type="range" min="0" max="400" step="1" value="0"/><br/>
+    </div>
+    <svg id="earth-js"></svg>
+    <canvas id="three-js"></canvas>
+    <svg class="ej-svg" width="700" height="500"></svg>
+    <canvas class="ej-canvas"></canvas>
+    <script>
+        const g = earthjs({padding:50})
+        .register(earthjs.plugins.autorotatePlugin())
+        .register(earthjs.plugins.mousePlugin())
+        .register(earthjs.plugins.hoverCanvas())
+        .register(earthjs.plugins.canvasPlugin())
+        .register(earthjs.plugins.threejsPlugin())
+        .register(earthjs.plugins.dropShadowSvg())
+        .register(earthjs.plugins.graticuleThreejs())
+        .register(earthjs.plugins.worldThreejs('../d/world-110m.json'))
+        .register(earthjs.plugins.pinCanvas('../data/bars.json', '../images/pin.png'))
+        .register(earthjs.plugins.dotsCanvas())
+        .register(earthjs.plugins.dotSelectCanvas())
+        .register(earthjs.plugins.dotTooltipCanvas())
+        .register(earthjs.plugins.fauxGlobeSvg());
+        g.canvasPlugin.selectAll('.ej-canvas');
+        g.fauxGlobeSvg.selectAll('.ej-svg');
+        g.pinCanvas.ready = function(err, json) {
+            json.features.forEach(function(d) {
+                d.geometry.value = d.properties.mag;
+            });
+            json.geometry = {radius: 2}
+            g.dotsCanvas.data(json);
+            g.pinCanvas.data(json);
+        };
+        g.dotTooltipCanvas.show = function(data, tooltip) {
+            const props = data.properties;
+            const title = Object.keys(props).map(k => k+': '+props[k]).join('<br/>');
+            return tooltip.html('<h3>Dot:</h3>'+title);
+        };
+        g.ready(function(){
+            g.create();
+        })
+
+        const canvas = d3.selectAll('canvas').nodes();
+        const svg = d3.selectAll('.ej-svg').nodes();
+        d3.select('#pan').on('input', function() {
+            canvas[0].style.left = (this.value)+'px';
+            canvas[1].style.left = (this.value*2)+'px';
+               svg[0].style.left = (this.value*3)+'px';
+        })
+    </script>
+</body>
+</html>
