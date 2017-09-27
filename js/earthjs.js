@@ -80,6 +80,7 @@ var earthjs$2 = function earthjs() {
         selector: '#earth-js',
         rotate: [130, -33, -11],
         transparent: false,
+        map: false,
         padding: 0
     }, options);
     var _ = {
@@ -105,6 +106,7 @@ var earthjs$2 = function earthjs() {
             return globe;
         }
     };
+    window._ = _;
     var drag = false;
     var svg = d3.selectAll(options.selector);
     var width = +svg.attr('width'),
@@ -184,7 +186,7 @@ var earthjs$2 = function earthjs() {
             }
         },
         register: function register(obj, name) {
-            var ar = { name: name || obj.name };
+            var ar = { name: name || obj.name, __on__: {} };
             globe[ar.name] = ar;
             Object.keys(obj).forEach(function (fn) {
                 if (['urls', 'onReady', 'onInit', 'onCreate', 'onRefresh', 'onResize', 'onInterval'].indexOf(fn) === -1) {
@@ -276,6 +278,7 @@ var earthjs$2 = function earthjs() {
                     }
                 }
             }
+            __.options.tween && __.options.tween(timestamp);
             earthjs.ticker = requestAnimationFrame(step);
         }
         earthjs.ticker = requestAnimationFrame(step);
@@ -392,35 +395,65 @@ var earthjs$2 = function earthjs() {
         return globe;
     };
 
-    __.orthoGraphic = function () {
-        var r = __.options.rotate;
-        if (typeof r === 'number') {
-            __.options.rotate = [r, -33, -11];
-        }
+    __.projection = function () {
         var _$options = __.options,
             scale = _$options.scale,
             width = _$options.width,
             height = _$options.height,
             padding = _$options.padding;
 
-        if (!scale) {
-            var mins = d3.min([width, height]);
-            scale = mins / 2 - padding;
+        if (__.options.map) {
+            if (!scale) {
+                scale = width / 6.279 - padding;
+            }
+            return d3.geoEquirectangular().translate(__.center).precision(0.1).scale(scale);
+        } else {
+            if (!scale) {
+                var mins = d3.min([width, height]);
+                scale = mins / 2 - padding;
+            }
+            var r = __.options.rotate;
+            if (typeof r === 'number') {
+                __.options.rotate = [r, -33, -11];
+            }
+            return d3.geoOrthographic().rotate(__.options.rotate).translate(__.center).precision(0.1).clipAngle(90).scale(scale);
         }
-        return d3.geoOrthographic().rotate(__.options.rotate).translate(__.center).precision(0.1).clipAngle(90).scale(scale);
     };
 
-    __.proj = __.orthoGraphic();
+    __.proj = __.projection();
     __.path = d3.geoPath().projection(__.proj);
+
+    globe.__addEventQueue = function (name) {
+        var obj = globe[name].__on__;
+        obj && Object.keys(obj).forEach(function (qname) {
+            return AddQueueEvent(obj, qname, name);
+        });
+    };
+    globe.__removeEventQueue = function (name) {
+        var obj = globe[name].__on__;
+        if (obj) {
+            Object.keys(obj).forEach(function (qname) {
+                delete _[qname][name];
+                _[qname + 'Keys'] = Object.keys(_[qname]);
+                _[qname + 'Vals'] = _[qname + 'Keys'].map(function (k) {
+                    return _[qname][k];
+                });
+            });
+        }
+    };
     return globe;
     //----------------------------------------
+    function AddQueueEvent(obj, qname, name) {
+        _[qname][name] = obj[qname];
+        _[qname + 'Keys'] = Object.keys(_[qname]);
+        _[qname + 'Vals'] = _[qname + 'Keys'].map(function (k) {
+            return _[qname][k];
+        });
+    }
     function qEvent(obj, qname, name) {
         if (obj[qname]) {
-            _[qname][name || obj.name] = obj[qname];
-            _[qname + 'Keys'] = Object.keys(_[qname]);
-            _[qname + 'Vals'] = _[qname + 'Keys'].map(function (k) {
-                return _[qname][k];
-            });
+            globe[name].__on__[qname] = obj[qname];
+            AddQueueEvent(obj, qname, name);
         }
     }
 };
@@ -533,6 +566,7 @@ var choroplethCsv = (function (csvUrl) {
 
     /*eslint no-console: 0 */
     var _ = {
+        cid: null,
         data: null,
         color: null,
         selectedColorId: null,
@@ -671,17 +705,18 @@ var choroplethCsv = (function (csvUrl) {
             colorList.sort(function (a, b) {
                 return b.properties.value - a.properties.value;
             });
-            colorCountries.selectAll('div.color-countries-item').data(colorList).enter().append('div').attr('class', function (d) {
-                return 'color-countries-item cid-' + d.properties.cid;
-            }).attr('data-cid', function (d) {
+            colorCountries.selectAll('div.color-countries-item').data(colorList).enter().append('div').attr('data-cid', function (d) {
                 return d.properties.cid;
+            }).attr('class', function (d) {
+                var selected = d.properties.cid === _.cid ? 'selected' : '';
+                return 'color-countries-item cid-' + d.properties.cid + ' ' + selected;
             }).html(function (d) {
                 var _d$properties = d.properties,
-                    cid3 = _d$properties.cid3,
+                    cid = _d$properties.cid,
                     name = _d$properties.name,
                     value = _d$properties.value;
 
-                return name + ': ' + f(value) + ' - ' + (cid3 ? cid3 : '&nbsp;-&nbsp;');
+                return name + ': ' + f(value) + ' - ' + (cid ? cid : '&nbsp;-&nbsp;');
             });
             colorCountries.on('mouseover', function () {
                 _.me.setCss(_.targetCss, d3.event.target.dataset.cid);
@@ -742,6 +777,9 @@ var choroplethCsv = (function (csvUrl) {
             } else {
                 return _.countries.features;
             }
+        },
+        cid: function cid(id) {
+            _.cid = id;
         }
     };
 });
@@ -1408,6 +1446,7 @@ var canvasPlugin = (function () {
         path: null,
         q: null
     };
+    var $ = {};
 
     function init() {
         var __ = this._;
@@ -1419,7 +1458,8 @@ var canvasPlugin = (function () {
         var __ = this._;
         if (__.options.showCanvas) {
             if (!_.canvas) {
-                var fObject = __.svg.append('g').attr('class', 'canvas').append('foreignObject').attr('x', 0).attr('y', 0).attr('width', __.options.width).attr('height', __.options.height);
+                $.g = __.svg.append('g').attr('class', _.me.name);
+                var fObject = $.g.append('foreignObject').attr('x', 0).attr('y', 0).attr('width', __.options.width).attr('height', __.options.height);
                 var fBody = fObject.append('xhtml:body').style('margin', '0px').style('padding', '0px').style('background-color', 'none').style('width', __.options.width + 'px').style('height', __.options.height + 'px');
                 _.canvas = fBody.append('canvas');
             }
@@ -1637,7 +1677,7 @@ var threejsPlugin = (function () {
         _.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, canvas: container });
         _.renderer.setClearColor(0x000000, 0);
         _.renderer.setSize(width, height);
-        _.renderer.sortObjects = false;
+        _.renderer.sortObjects = true;
         this.renderThree = _renderThree;
         if (window.THREEx && window.THREEx.DomEvents) {
             _.domEvents = new window.THREEx.DomEvents(_.camera, _.renderer.domElement);
@@ -1710,7 +1750,33 @@ var threejsPlugin = (function () {
             return _.group;
         },
         addGroup: function addGroup(obj) {
+            var _this2 = this;
+
             _.group.add(obj);
+            if (obj.name && this[obj.name]) {
+                this[obj.name].add = function () {
+                    _.group.add(obj);
+                    _this2.__addEventQueue(obj.name);
+                };
+                this[obj.name].remove = function () {
+                    _.group.remove(obj);
+                    _this2.__removeEventQueue(obj.name);
+                };
+                this[obj.name].isAdded = function () {
+                    return _.group.children.filter(function (x) {
+                        return x.name === obj.name;
+                    }).length > 0;
+                };
+            }
+        },
+        emptyGroup: function emptyGroup() {
+            var arr = _.group.children;
+            var ttl = arr.length;
+            for (var i = ttl - 1; i > -1; --i) {
+                var obj = arr[i];
+                _.group.remove(obj);
+                obj.name && this.__removeEventQueue(obj.name);
+            }
         },
         scale: function scale(obj) {
             _scale.call(this, obj);
@@ -2062,6 +2128,8 @@ var barSvg = (function (urlBars) {
 });
 
 var mapSvg = (function (worldUrl) {
+    var flexbox = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '.ej-flexbox';
+
     /*eslint no-console: 0 */
     var _ = {
         q: null,
@@ -2076,7 +2144,7 @@ var mapSvg = (function (worldUrl) {
         countries: { type: 'FeatureCollection', features: [] }
     };
     var $ = {};
-    var mapTooltip = d3.select('body').append('div').attr('class', 'ej-country-tooltip');
+    _.mapTooltip = d3.select('body').append('div').attr('class', 'ej-country-tooltip');
 
     function init() {
         _.svg = this._.svg;
@@ -2085,12 +2153,12 @@ var mapSvg = (function (worldUrl) {
             height = _$options.height;
 
         var scale = width / 6.279;
-        var zoom = d3.zoom().on('zoom', function () {
+        _.zoom = d3.zoom().on('zoom', function () {
             return $.g.attr('transform', d3.event.transform);
         });
         _.proj = d3.geoEquirectangular().scale(scale).translate([width / 2, height / 2]);
         _.path = d3.geoPath().projection(_.proj).context(_.context);
-        _.svg.call(zoom);
+        _.svg.call(_.zoom);
     }
 
     function show(data, tooltip) {
@@ -2103,6 +2171,7 @@ var mapSvg = (function (worldUrl) {
 
     function create() {
         var _this = this;
+        _.flexBox = d3.selectAll(flexbox);
         _.svg.selectAll('.countries').remove();
         if (this._.options.showMap) {
             $.g = _.svg.append('g').attr('class', 'countries');
@@ -2115,6 +2184,8 @@ var mapSvg = (function (worldUrl) {
             $.countries.on('click', function (d) {
                 var _this2 = this;
 
+                var cid = d.properties.cid;
+                $.countries.classed('selected', false);
                 if (_this.choroplethCsv) {
                     var oscale = -1;
                     var v = _this.choroplethCsv.colorScale();
@@ -2125,8 +2196,10 @@ var mapSvg = (function (worldUrl) {
                     if (oscale !== vscale || _.selectedCountry === d) {
                         _this.choroplethCsv.setSelectedColor(vscale - 1);
                     }
+                    _this.choroplethCsv.cid(cid);
+                    d3.selectAll('.color-countries-item').classed('selected', false);
+                    d3.selectAll('.color-countries-item.cid-' + cid).classed('selected', true);
                 }
-                $.countries.classed('selected', false);
                 if (_.selectedCountry !== d) {
                     _.selectedCountry = d;
                     $.countries.filter('#x' + d.id).classed('selected', true);
@@ -2141,15 +2214,22 @@ var mapSvg = (function (worldUrl) {
                     pageX = _d3$event.pageX,
                     pageY = _d3$event.pageY;
 
-                (_.me.show || show)(data, mapTooltip).style('display', 'block').style('left', pageX + 7 + 'px').style('top', pageY - 15 + 'px');
-            }).on('mouseout', function () {
-                mapTooltip.style('display', 'none');
+                (_.me.show || show)(data, _.mapTooltip).style('display', 'block').style('left', pageX + 7 + 'px').style('top', pageY - 15 + 'px');
+                _.flexBox.style('display', 'flex');
+            }).on('mouseout', function (data) {
+                if (_.me.hide) {
+                    _.me.hide(data, _.mapTooltip);
+                }
+                _.mapTooltip.style('display', 'none');
+                if (_.selectedCountry === null) {
+                    _.flexBox.style('display', 'none');
+                }
             }).on('mousemove', function () {
                 var _d3$event2 = d3.event,
                     pageX = _d3$event2.pageX,
                     pageY = _d3$event2.pageY;
 
-                mapTooltip.style('left', pageX + 7 + 'px').style('top', pageY - 15 + 'px');
+                _.mapTooltip.style('left', pageX + 7 + 'px').style('top', pageY - 15 + 'px');
             });
             refresh.call(this);
         }
@@ -2224,6 +2304,9 @@ var mapSvg = (function (worldUrl) {
                 _.svg = d3.selectAll(q);
             }
             return _.svg;
+        },
+        resetZoom: function resetZoom() {
+            _.svg.call(_.zoom.transform, d3.zoomIdentity);
         }
     };
 });
@@ -2382,8 +2465,9 @@ var worldSvg = (function (worldUrl) {
 
     function create() {
         var __ = this._;
-        _.svg.selectAll('.landbg,.land,.lakes,.countries').remove();
+        _.svg.selectAll('.' + _.me.name).remove();
         if (__.options.showLand) {
+            $.g = _.svg.append('g').attr('class', _.me.name);
             if (_.world) {
                 if (__.options.transparent || __.options.transparentLand) {
                     _.svgAddWorldBg.call(this);
@@ -2439,21 +2523,21 @@ var worldSvg = (function (worldUrl) {
     }
 
     function svgAddWorldBg() {
-        $.worldBg = _.svg.append('g').attr('class', 'landbg').append('path').datum(_.land).attr('fill', 'rgba(119,119,119,0.2)');
+        $.worldBg = $.g.append('g').attr('class', 'landbg').append('path').datum(_.land).attr('fill', 'rgba(119,119,119,0.2)');
     }
 
     function svgAddWorld() {
-        $.world = _.svg.append('g').attr('class', 'land').append('path').datum(_.land);
+        $.world = $.g.append('g').attr('class', 'land').append('path').datum(_.land);
     }
 
     function svgAddCountries() {
-        $.countries = _.svg.append('g').attr('class', 'countries').selectAll('path').data(_.countries.features).enter().append('path').attr('id', function (d) {
+        $.countries = $.g.append('g').attr('class', 'countries').selectAll('path').data(_.countries.features).enter().append('path').attr('id', function (d) {
             return 'x' + d.id;
         });
     }
 
     function svgAddLakes() {
-        $.lakes = _.svg.append('g').attr('class', 'lakes').append('path').datum(_.lakes);
+        $.lakes = $.g.append('g').attr('class', 'lakes').append('path').datum(_.lakes);
     }
 
     return {
@@ -2523,15 +2607,6 @@ var worldSvg = (function (worldUrl) {
                 _.svg = d3.selectAll(q);
             }
             return _.svg;
-        },
-        $world: function $world() {
-            return $.world;
-        },
-        $lakes: function $lakes() {
-            return $.lakes;
-        },
-        $countries: function $countries() {
-            return $.countries;
         }
     };
 });
@@ -4417,6 +4492,7 @@ var barThreejs = (function (jsonUrl) {
                 group.add(mesh);
             });
             _.sphereObject = group;
+            _.sphereObject.name = _.me.name;
         }
         tj.addGroup(_.sphereObject);
     }
@@ -4537,6 +4613,7 @@ var hmapThreejs = (function (hmapUrl) {
         var tj = this.threejsPlugin;
         if (!_.sphereObject) {
             _.sphereObject = new THREE.Mesh(_.geometry, _.material);
+            _.sphereObject.name = _.me.name;
         }
         _.texture.needsUpdate = true;
         tj.addGroup(_.sphereObject);
@@ -4614,6 +4691,7 @@ var dotsThreejs = (function (urlJson) {
         var tj = this.threejsPlugin;
         if (!_.sphereObject) {
             _.sphereObject = new THREE.Group();
+            _.sphereObject.name = _.me.name;
             _.dataDots.features.forEach(function (d) {
                 var dot = createDot.call(_this, d);
                 _.sphereObject.add(dot);
@@ -4744,6 +4822,7 @@ var iconsThreejs = (function (jsonUrl, iconUrl) {
                 group.add(mesh);
             });
             _.sphereObject = group;
+            _.sphereObject.name = _.me.name;
         }
         tj.addGroup(_.sphereObject);
     }
@@ -4860,6 +4939,7 @@ var canvasThreejs = (function (worldUrl) {
         if (!_.sphereObject) {
             resize.call(this);
             _.sphereObject = new THREE.Mesh(_.geometry, _.material);
+            _.sphereObject.name = _.me.name;
         }
         _.onDrawVals.forEach(function (v) {
             v.call(_this, _.newContext, _.path);
@@ -5075,6 +5155,7 @@ var textureThreejs = (function () {
             _.context.strokeStyle = 'rgba(119,119,119,0.6)';
             _.context.stroke();
             _.sphereObject = new THREE.Mesh(geometry, material);
+            _.sphereObject.name = _.me.name;
             _.texture.needsUpdate = false;
         }
         tj.addGroup(_.sphereObject);
@@ -5160,6 +5241,7 @@ var graticuleThreejs = (function () {
         if (!_.sphereObject) {
             var material = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
             _.sphereObject = tj.wireframe(_.graticule10, material); //0x800000
+            _.sphereObject.name = _.me.name;
         }
         tj.addGroup(_.sphereObject);
     }
@@ -5582,6 +5664,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
             }, false);
         }
         _.sphereObject = group;
+        _.sphereObject.name = _.me.name;
         _.loaded = true;
     }
 
@@ -5658,6 +5741,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
             resize.call(this);
         },
         onInterval: function onInterval(t) {
+            console.log(1);
             _.lightFlow && interval.call(this, t);
         },
         onCreate: function onCreate() {
@@ -5760,6 +5844,7 @@ var debugThreejs = (function () {
 
             _.sphereObject = new THREE.Object3D();
             _.sphereObject.add(sphereMesh, dot1Mesh, dot2Mesh, dot3Mesh);
+            _.sphereObject.name = _.me.name;
         }
         tj.addGroup(_.sphereObject);
     }
@@ -5815,6 +5900,7 @@ var oceanThreejs = (function (color) {
             } else {
                 _.sphereObject = new THREE.Mesh(geometry, _.material);
             }
+            _.sphereObject.name = _.me.name;
         }
         tj.addGroup(_.sphereObject);
     }
@@ -5844,7 +5930,10 @@ var imageThreejs = (function () {
     function init() {
         var tj = this.threejsPlugin;
         _.material = new THREE.MeshBasicMaterial({
-            map: tj.texture(imgUrl)
+            map: tj.texture(imgUrl),
+            side: THREE.DoubleSide,
+            transparent: true,
+            alphaTest: 0.5
         });
         Object.defineProperty(_.me, 'transparent', {
             get: function get() {
@@ -5870,6 +5959,7 @@ var imageThreejs = (function () {
             var SCALE = this._.proj.scale();
             var geometry = new THREE.SphereGeometry(SCALE, 30, 30);
             _.sphereObject = new THREE.Mesh(geometry, _.material);
+            _.sphereObject.name = _.me.name;
             tj.addGroup(_.sphereObject);
         } else {
             tj.addGroup(_.sphereObject);
@@ -5910,6 +6000,7 @@ var worldThreejs = (function () {
             var mesh = topojson.mesh(_.world, _.world.objects.countries);
             var material = new THREE.MeshBasicMaterial({ color: 0x707070 });
             _.sphereObject = tj.wireframe(mesh, material);
+            _.sphereObject.name = _.me.name;
         }
         tj.addGroup(_.sphereObject);
     }
@@ -5975,6 +6066,7 @@ var globeThreejs = (function () {
                 specular: new THREE.Color('grey')
             });
             _.sphereObject = new THREE.Mesh(geometry, material);
+            _.sphereObject.name = _.me.name;
             if (this._.domEvents) {
                 this._.domEvents.addEventListener(_.sphereObject, 'mousemove', function (event) {
                     var _iteratorNormalCompletion = true;
@@ -6086,8 +6178,9 @@ var sphereThreejs = (function () {
       group.add(mesh1);
       group.add(mesh2);
       _.sphereObject = group;
+      _.sphereObject.name = _.me.name;
       tj.addGroup(_.sphereObject);
-      tj.rotate();
+      // tj.rotate();
     } else {
       tj.addGroup(_.sphereObject);
     }
@@ -6221,7 +6314,8 @@ if (window.THREE) {
 var world3d = (function () {
     var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.geometry.json';
     var landUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/gold.jpg';
-    var rtt = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : -1.57;
+    var inner = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0.9;
+    var rtt = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : -1.57;
 
     /*eslint no-console: 0 */
     var _ = { sphereObject: new THREE.Object3D() };
@@ -6229,7 +6323,7 @@ var world3d = (function () {
     function loadCountry() {
         var data = _.world;
         for (var name in data) {
-            var geometry = new Map3DGeometry(data[name], 0.9);
+            var geometry = new Map3DGeometry(data[name], inner);
             _.sphereObject.add(data[name].mesh = new THREE.Mesh(geometry, _.material));
         }
         _.loaded = true;
@@ -6252,6 +6346,7 @@ var world3d = (function () {
         if (_.material && !_.loaded) {
             loadCountry();
         }
+        _.sphereObject.name = _.me.name;
         var tj = this.threejsPlugin;
         tj.addGroup(_.sphereObject);
     }
@@ -6263,7 +6358,12 @@ var world3d = (function () {
         var tj = this.threejsPlugin;
         var shading = THREE.SmoothShading;
         var uniforms = { tMatCap: { type: type, value: tj.texture(imgUrl) } };
-        var material = new THREE.ShaderMaterial({ shading: shading, uniforms: uniforms, vertexShader: vertexShader, fragmentShader: fragmentShader });
+        var material = new THREE.ShaderMaterial({
+            shading: shading,
+            uniforms: uniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader
+        });
         cb.call(this, material);
     }
 
@@ -6394,21 +6494,24 @@ var world3d2 = (function () {
         if (_.material && !_.loaded) {
             loadCountry();
         }
+        _.sphereObject.name = _.me.name;
         var tj = this.threejsPlugin;
         tj.addGroup(_.sphereObject);
     }
 
-    var vertexShader = '\n    varying vec2 vN;\n    void main() {\n        vec4 p = vec4( position, 1. );\n        vec3 e = normalize( vec3( modelViewMatrix * p ) );\n        vec3 n = normalize( normalMatrix * normal );\n        vec3 r = reflect( e, n );\n        float m = 2. * length( vec3( r.xy, r.z + 1. ) );\n        vN = r.xy / m + .5;\n        gl_Position = projectionMatrix * modelViewMatrix * p;\n    }\n    ';
-    var fragmentShader = '\n    uniform sampler2D tMatCap;\n    varying vec2 vN;\n    void main() {\n        vec3 base = texture2D( tMatCap, vN ).rgb;\n        gl_FragColor = vec4( base, 1. );\n    }\n    ';
+    var vertexShader = '\n    varying vec2 vN;\n    void main() {\n        vec4 p = vec4( position, 1. );\n        vec3 e = normalize( vec3( modelViewMatrix * p ) );\n        vec3 n = normalize( normalMatrix * normal );\n        vec3 r = reflect( e, n );\n        float m = 2. * length( vec3( r.xy, r.z + 1. ) );\n        vN = r.xy / m + .15;\n        gl_Position = projectionMatrix * modelViewMatrix * p;\n    }\n    ';
+    var fragmentShader = '\n    uniform sampler2D texture;\n    varying vec2 vN;\n    void main() {\n        vec3 base = texture2D( texture, vN ).rgb;\n        gl_FragColor = vec4( base, 0.95 );\n    }\n    ';
     function makeEnvMapMaterial(imgUrl, cb) {
         var type = 't';
         var tj = this.threejsPlugin;
-        var uniforms = { tMatCap: { type: type, value: tj.texture(imgUrl) } };
+        var value = tj.texture(imgUrl);
+        var shading = THREE.SmoothShading;
+        var uniforms = { texture: { type: type, value: value } };
         var material = new THREE.ShaderMaterial({
+            shading: shading,
             uniforms: uniforms,
             vertexShader: vertexShader,
-            fragmentShader: fragmentShader,
-            shading: THREE.SmoothShading
+            fragmentShader: fragmentShader
         });
         cb.call(this, material);
     }
