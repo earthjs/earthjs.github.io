@@ -278,7 +278,7 @@ var earthjs$2 = function earthjs() {
                     }
                 }
             }
-            __.options.tween && __.options.tween(timestamp);
+            if (__.options.tween && !__.drag) __.options.tween(timestamp);
             earthjs.ticker = requestAnimationFrame(step);
         }
         earthjs.ticker = requestAnimationFrame(step);
@@ -573,7 +573,6 @@ var choroplethCsv = (function (csvUrl) {
         selectedCountryId: null,
         countries: { type: 'FeatureCollection', features: [] }
     };
-    window._ = _;
 
     function getPath(path) {
         var v = this;
@@ -631,10 +630,11 @@ var choroplethCsv = (function (csvUrl) {
         // https://github.com/d3/d3-scale-chromatic
         colorize: function colorize(key) {
             var schemeKey = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : scheme;
+            var opacity = arguments[2];
 
             var value = void 0,
                 colorList = d3[schemeKey][9];
-            if (arguments.length === 2) {
+            if (arguments.length > 1) {
 
                 var arr = _.data.map(function (x) {
                     return +x[key];
@@ -653,7 +653,13 @@ var choroplethCsv = (function (csvUrl) {
                 _.data.forEach(function (obj) {
                     var vl = +obj[key];
                     var id = _.scale(vl);
-                    obj.color = _.color(id);
+                    if (opacity === undefined) {
+                        obj.color = _.color(id);
+                    } else {
+                        var color = d3.color(_.color(id));
+                        color.opacity = opacity;
+                        obj.color = color + '';
+                    }
                     obj.colorId = id - 1;
                     _.colorValues[obj.colorId].totalValue += vl;
                 });
@@ -1316,7 +1322,7 @@ var mousePlugin = (function () {
                     _.wait = null;
                     ondblclick();
                 } else if (_.wait === null) {
-                    _.wait = window.setTimeout(function () {
+                    _.wait = setTimeout(function () {
                         if (_.wait) {
                             _.wait = false;
                         }
@@ -1627,6 +1633,7 @@ var countryCanvas = (function (worldUrl) {
 // Philippe Rivière’s https://bl.ocks.org/Fil/9ed0567b68501ee3c3fef6fbe3c81564
 // https://gist.github.com/Fil/ad107bae48e0b88014a0e3575fe1ba64
 // http://bl.ocks.org/kenpenn/16a9c611417ffbfc6129
+// https://stackoverflow.com/questions/42392777/three-js-buffer-management
 var threejsPlugin = (function () {
     var threejs = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'three-js';
 
@@ -1700,15 +1707,12 @@ var threejsPlugin = (function () {
         var direct = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
         var delay = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0;
 
-        if (!obj) {
-            obj = _.group;
-        }
         var __ = this._;
         var rt = __.proj.rotate();
         rt[0] -= 90;
         var q1 = __.versor(rt);
         var q2 = new THREE.Quaternion(-q1[2], q1[1], q1[3], q1[0]);
-        obj.setRotationFromQuaternion(q2);
+        (obj || _.group).setRotationFromQuaternion(q2);
         _renderThree.call(this, direct, false, delay);
     }
 
@@ -1721,6 +1725,10 @@ var threejsPlugin = (function () {
 
         if (direct) {
             _.renderer.render(_.scene, _.camera);
+            if (renderThreeX) {
+                renderThreeX = null;
+                clearTimeout(renderThreeX);
+            }
         } else if (renderThreeX === null) {
             renderThreeX = setTimeout(function () {
                 fn && fn.call(_this, _.group);
@@ -1757,10 +1765,12 @@ var threejsPlugin = (function () {
                 this[obj.name].add = function () {
                     _.group.add(obj);
                     _this2.__addEventQueue(obj.name);
+                    _renderThree.call(_this2);
                 };
                 this[obj.name].remove = function () {
                     _.group.remove(obj);
                     _this2.__removeEventQueue(obj.name);
+                    _renderThree.call(_this2);
                 };
                 this[obj.name].isAdded = function () {
                     return _.group.children.filter(function (x) {
@@ -1776,6 +1786,7 @@ var threejsPlugin = (function () {
                 var obj = arr[i];
                 _.group.remove(obj);
                 obj.name && this.__removeEventQueue(obj.name);
+                _renderThree.call(this);
             }
         },
         scale: function scale(obj) {
@@ -2017,7 +2028,7 @@ var barSvg = (function (urlBars) {
     function init() {
         var __ = this._;
         __.options.showBars = true;
-        _.barProjection = __.orthoGraphic();
+        _.barProjection = __.projection();
         _.svg = __.svg;
     }
 
@@ -5279,7 +5290,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
         onHover: {},
         onHoverVals: []
     };
-    var lineScale = d3.scaleLinear().domain([30, 2500]).range([0.001, 0.01]);
+    var lineScale = d3.scaleLinear().domain([30, 2500]).range([0.001, 0.005]);
     var PI180 = Math.PI / 180.0;
 
     var colorRange = [d3.rgb('#ff0000'), d3.rgb("#aaffff")];
@@ -5698,7 +5709,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
 
     var start = 0;
     function interval(timestamp) {
-        if (timestamp - start > 30 && !this._.drag) {
+        if (timestamp - start > 30) {
             start = timestamp;
             update_point_cloud();
             this.threejsPlugin.renderThree();
@@ -5741,8 +5752,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
             resize.call(this);
         },
         onInterval: function onInterval(t) {
-            console.log(1);
-            _.lightFlow && interval.call(this, t);
+            if (!this._.drag && _.lightFlow) interval.call(this, t);
         },
         onCreate: function onCreate() {
             create.call(this);
@@ -6028,6 +6038,21 @@ var worldThreejs = (function () {
                 return _.world;
             }
         },
+        allData: function allData(all) {
+            if (all) {
+                _.world = all.world;
+                _.land = all.land;
+                _.lakes = all.lakes;
+                _.countries = all.countries;
+            } else {
+                var world = _.world,
+                    land = _.land,
+                    lakes = _.lakes,
+                    countries = _.countries;
+
+                return { world: world, land: land, lakes: lakes, countries: countries };
+            }
+        },
         sphere: function sphere() {
             return _.sphereObject;
         }
@@ -6036,8 +6061,8 @@ var worldThreejs = (function () {
 
 var globeThreejs = (function () {
     var imgUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../globe/world.jpg';
-    var elvUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/elevation.jpg';
-    var wtrUrl = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '../globe/water.png';
+    var elvUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/earth_elevation.jpg';
+    var wtrUrl = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : '../globe/earth_water.png';
 
     /*eslint no-console: 0 */
     var _ = {
@@ -6392,6 +6417,12 @@ var world3d = (function () {
         },
         sphere: function sphere() {
             return _.sphereObject;
+        },
+        extrude: function extrude(inner) {
+            for (var name in _.world) {
+                var dataItem = _.world[name];
+                dataItem.mesh.geometry = new Map3DGeometry(dataItem, inner);
+            }
         }
     };
 });
