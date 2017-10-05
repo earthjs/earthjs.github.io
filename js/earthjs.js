@@ -907,6 +907,93 @@ var colorScale = (function (data) {
     };
 });
 
+// http://bl.ocks.org/syntagmatic/6645345
+var dotRegion = (function (jsonUrl) {
+    var radius = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1.5;
+    //
+    /*eslint no-console: 0 */
+    var _ = { recreate: true };
+
+    function rgb2num(str) {
+        return str.split(',').reduce(function (i, n) {
+            return +i * 256 + +n;
+        });
+    }
+
+    function num2rgb(num) {
+        var d = num % 256;
+        for (var i = 2; i > 0; i--) {
+            num = Math.floor(num / 256);
+            d = num % 256 + ',' + d;
+        }
+        return d;
+    }
+
+    function init() {
+        var width = 1600;
+        var height = 800;
+        var center = [width / 2, height / 2];
+        _.canvas = d3.select('body').append('canvas').attr('class', 'ej-hidden').attr('width', width).attr('height', height).node();
+        _.context = _.canvas.getContext('2d');
+        _.proj = d3.geoEquirectangular().translate(center).scale(center[1] / 1.2);
+        _.path = d3.geoPath().projection(_.proj).context(_.context);
+    }
+
+    function create() {
+        if (_.recreate) {
+            _.recreate = false;
+            _.context.clearRect(0, 0, 1024, 512);
+            var arr = _.dataDots.features;
+            for (var i = 0; i < arr.length; i++) {
+                _.context.beginPath();
+                // _.path(arr[i]);
+                var xy = _.proj(arr[i].geometry.coordinates);
+                _.context.arc(xy[0], xy[1], radius, 0, 2 * Math.PI);
+                _.context.fillStyle = 'rgb(' + num2rgb(i + 2) + ')';
+                _.context.fill();
+            }
+        }
+    }
+
+    return {
+        name: 'dotRegion',
+        urls: jsonUrl && [jsonUrl],
+        onReady: function onReady(err, data) {
+            _.me.data(data);
+        },
+        onInit: function onInit(me) {
+            _.me = me;
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.dataDots = _data;
+            } else {
+                return _.dataDots;
+            }
+        },
+        detect: function detect(latlong) {
+            // g._.proj.invert(mouse);
+            var hiddenPos = _.proj(latlong);
+            if (hiddenPos[0] > 0) {
+                var p = _.context.getImageData(hiddenPos[0], hiddenPos[1], 1, 1).data;
+                var d = _.dataDots.features[rgb2num(p.slice(0, 3).join(',')) - 2];
+                if (d) {
+                    var coordinates = d.geometry.coordinates;
+
+                    if (Math.floor(coordinates[0]) === Math.floor(latlong[0]) && Math.floor(coordinates[1]) === Math.floor(latlong[1])) {
+                        // console.log(latlong, coordinates);
+                        return d;
+                    }
+                }
+            }
+        }
+    };
+});
+
 var zoomPlugin = (function () {
     /*eslint no-console: 0 */
     var _ = {};
@@ -2379,6 +2466,58 @@ var mapSvg = (function (worldUrl) {
         },
         resetZoom: function resetZoom() {
             _.svg.call(_.zoom.transform, d3.zoomIdentity);
+        }
+    };
+});
+
+var haloSvg = (function () {
+    var haloColor = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '#fff';
+
+    var _ = { svg: null, q: null };
+    var $ = {};
+
+    function init() {
+        var __ = this._;
+        __.options.showHalo = true;
+        _.svg = __.svg;
+    }
+
+    function create() {
+        _.svg.selectAll('#halo,.halo').remove();
+        if (this._.options.showHalo) {
+            this.$slc.defs.append('radialGradient').attr('id', 'halo').attr('cx', '50%').attr('cy', '50%').html('\n<stop offset="85%" stop-color="' + haloColor + '" stop-opacity="1"></stop>\n<stop offset="100%" stop-color="' + haloColor + '" stop-opacity="0"></stop>\n');
+            $.halo = _.svg.append('g').attr('class', 'halo').append('ellipse').attr('class', 'noclicks').attr('cx', this._.center[0]).attr('cy', this._.center[1]);
+            resize.call(this);
+        }
+    }
+
+    var scale = d3.scaleLinear().domain([100, 300]).range([110, 330]);
+    function resize() {
+        var r = scale(this._.proj.scale());
+        $.halo.attr('rx', r).attr('ry', r);
+    }
+
+    return {
+        name: 'haloSvg',
+        onInit: function onInit(me) {
+            _.me = me;
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onResize: function onResize() {
+            resize.call(this);
+        },
+        selectAll: function selectAll(q) {
+            if (q) {
+                _.q = q;
+                _.svg = d3.selectAll(q);
+            }
+            return _.svg;
+        },
+        $halo: function $halo() {
+            return $.halo;
         }
     };
 });
@@ -4745,9 +4884,15 @@ var hmapThreejs = (function (hmapUrl) {
 // https://bl.ocks.org/mbostock/2b85250396c17a79155302f91ec21224
 // https://bl.ocks.org/pbogden/2f8d2409f1b3746a1c90305a1a80d183
 // http://www.svgdiscovery.com/ThreeJS/Examples/17_three.js-D3-graticule.htm
+// https://stackoverflow.com/questions/22028288/how-to-optimize-rendering-of-many-spheregeometry-in-three-js
+// https://threejs.org/docs/#api/materials/PointsMaterial
 var dotsThreejs = (function (urlJson) {
     /*eslint no-console: 0 */
-    var _ = { dataDots: null };
+    var _ = {
+        dataDots: null,
+        onHover: {},
+        onHoverVals: []
+    };
 
     function init() {
         this._.options.showDots = true;
@@ -4764,12 +4909,39 @@ var dotsThreejs = (function (urlJson) {
             opacity: 0.5
         }),
             radius = (feature.geometry.radius || 0.5) * 10,
-            geometry = new THREE.CircleGeometry(radius, 30),
+            geometry = new THREE.CircleBufferGeometry(radius, 25),
             mesh = new THREE.Mesh(geometry, material),
             position = tj.vertex(feature.geometry.coordinates);
         mesh.position.set(position.x, position.y, position.z);
         mesh.lookAt({ x: 0, y: 0, z: 0 });
         return mesh;
+    }
+
+    function hover(event) {
+        var _iteratorNormalCompletion = true;
+        var _didIteratorError = false;
+        var _iteratorError = undefined;
+
+        try {
+            for (var _iterator = _.onHoverVals[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                var v = _step.value;
+
+                v.call(event.target, event);
+            }
+        } catch (err) {
+            _didIteratorError = true;
+            _iteratorError = err;
+        } finally {
+            try {
+                if (!_iteratorNormalCompletion && _iterator.return) {
+                    _iterator.return();
+                }
+            } finally {
+                if (_didIteratorError) {
+                    throw _iteratorError;
+                }
+            }
+        }
     }
 
     function create() {
@@ -4781,7 +4953,11 @@ var dotsThreejs = (function (urlJson) {
             _.sphereObject.name = _.me.name;
             _.dataDots.features.forEach(function (d) {
                 var dot = createDot.call(_this, d);
+                dot.__data__ = d;
                 _.sphereObject.add(dot);
+                if (tj.domEvents) {
+                    tj.domEvents.addEventListener(dot, 'mousemove', hover, false);
+                }
             });
         }
         tj.addGroup(_.sphereObject);
@@ -4806,6 +4982,12 @@ var dotsThreejs = (function (urlJson) {
             } else {
                 return _.dataDots;
             }
+        },
+        onHover: function onHover(obj) {
+            Object.assign(_.onHover, obj);
+            _.onHoverVals = Object.keys(_.onHover).map(function (k) {
+                return _.onHover[k];
+            });
         },
         sphere: function sphere() {
             return _.sphereObject;
@@ -4979,6 +5161,8 @@ var canvasThreejs = (function (worldUrl) {
     var _ = {
         world: null,
         sphereObject: null,
+        onHover: {},
+        onHoverVals: [],
         style: {},
         onDraw: {},
         onDrawVals: [],
@@ -5014,6 +5198,33 @@ var canvasThreejs = (function (worldUrl) {
         _.me._ = _; // only for debugging
     }
 
+    function hover(event) {
+        var _iteratorNormalCompletion = true;
+        var _didIteratorError = false;
+        var _iteratorError = undefined;
+
+        try {
+            for (var _iterator = _.onHoverVals[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                var v = _step.value;
+
+                v.call(event.target, event);
+            }
+        } catch (err) {
+            _didIteratorError = true;
+            _iteratorError = err;
+        } finally {
+            try {
+                if (!_iteratorNormalCompletion && _iterator.return) {
+                    _iterator.return();
+                }
+            } finally {
+                if (_didIteratorError) {
+                    throw _iteratorError;
+                }
+            }
+        }
+    }
+
     function create() {
         var _this = this;
 
@@ -5022,6 +5233,9 @@ var canvasThreejs = (function (worldUrl) {
             resize.call(this);
             _.sphereObject = new THREE.Mesh(_.geometry, _.material);
             _.sphereObject.name = _.me.name;
+            if (tj.domEvents) {
+                tj.domEvents.addEventListener(_.sphereObject, 'mousemove', hover, false);
+            }
         }
         _.onDrawVals.forEach(function (v) {
             v.call(_this, _.newContext, _.path);
@@ -5184,6 +5398,119 @@ var canvasThreejs = (function (worldUrl) {
         refresh: function refresh() {
             _.refresh = true;
             _refresh.call(this);
+        },
+        onHover: function onHover(obj) {
+            Object.assign(_.onHover, obj);
+            _.onHoverVals = Object.keys(_.onHover).map(function (k) {
+                return _.onHover[k];
+            });
+        },
+        sphere: function sphere() {
+            return _.sphereObject;
+        }
+    };
+});
+
+// https://bl.ocks.org/mbostock/2b85250396c17a79155302f91ec21224
+// https://bl.ocks.org/pbogden/2f8d2409f1b3746a1c90305a1a80d183
+// http://www.svgdiscovery.com/ThreeJS/Examples/17_three.js-D3-graticule.htm
+// https://stackoverflow.com/questions/22028288/how-to-optimize-rendering-of-many-spheregeometry-in-three-js
+// https://threejs.org/docs/#api/materials/PointsMaterial
+var pointsThreejs = (function (urlJson) {
+    //imgUrl='../globe/point3.png'
+    /*eslint no-console: 0 */
+    var _ = {
+        dataPoints: null,
+        onHover: {},
+        onHoverVals: []
+    };
+
+    function init() {
+        this._.options.showPoints = true;
+    }
+
+    function hover(event) {
+        var _iteratorNormalCompletion = true;
+        var _didIteratorError = false;
+        var _iteratorError = undefined;
+
+        try {
+            for (var _iterator = _.onHoverVals[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                var v = _step.value;
+
+                v.call(event.target, event);
+            }
+        } catch (err) {
+            _didIteratorError = true;
+            _iteratorError = err;
+        } finally {
+            try {
+                if (!_iteratorNormalCompletion && _iterator.return) {
+                    _iterator.return();
+                }
+            } finally {
+                if (_didIteratorError) {
+                    throw _iteratorError;
+                }
+            }
+        }
+    }
+
+    function create() {
+        var tj = this.threejsPlugin;
+        if (!_.sphereObject) {
+            var particles = new THREE.Geometry();
+            _.dataPoints.features.forEach(function (d) {
+                var star = new THREE.Vector3();
+                var position = tj.vertex(d.geometry.coordinates);
+                star.x = position.x;
+                star.y = position.y;
+                star.z = position.z;
+                particles.vertices.push(star);
+            });
+            var pMaterial = new THREE.PointsMaterial({
+                // blending: THREE.AdditiveBlending,
+                // map: tj.texture(imgUrl),
+                // transparent: true,
+                // depthTest: false,
+                color: 0xff0000,
+                size: 30
+            });
+            var starField = new THREE.Points(particles, pMaterial);
+            _.sphereObject = starField;
+            _.sphereObject.name = _.me.name;
+            if (tj.domEvents) {
+                tj.domEvents.addEventListener(starField, 'mousemove', hover, false);
+            }
+        }
+        tj.addGroup(_.sphereObject);
+    }
+
+    return {
+        name: 'pointsThreejs',
+        urls: urlJson && [urlJson],
+        onReady: function onReady(err, data) {
+            _.me.data(data);
+        },
+        onInit: function onInit(me) {
+            _.me = me;
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.dataPoints = _data;
+            } else {
+                return _.dataPoints;
+            }
+        },
+        onHover: function onHover(obj) {
+            Object.assign(_.onHover, obj);
+            _.onHoverVals = Object.keys(_.onHover).map(function (k) {
+                return _.onHover[k];
+            });
         },
         sphere: function sphere() {
             return _.sphereObject;
@@ -6945,6 +7272,7 @@ earthjs$2.plugins = {
 
     colorScale: colorScale,
 
+    dotRegion: dotRegion,
     hoverCanvas: hoverCanvas,
     clickCanvas: clickCanvas,
     mousePlugin: mousePlugin,
@@ -6975,6 +7303,7 @@ earthjs$2.plugins = {
     worldSvg: worldSvg,
     barSvg: barSvg,
     mapSvg: mapSvg,
+    haloSvg: haloSvg,
     dotsSvg: dotsSvg,
     pingsSvg: pingsSvg,
     pinCanvas: pinCanvas,
@@ -6989,6 +7318,7 @@ earthjs$2.plugins = {
     dotsCThreejs: dotsCThreejs,
     iconsThreejs: iconsThreejs,
     canvasThreejs: canvasThreejs,
+    pointsThreejs: pointsThreejs,
     textureThreejs: textureThreejs,
     graticuleThreejs: graticuleThreejs,
     flightLineThreejs: flightLineThreejs,
