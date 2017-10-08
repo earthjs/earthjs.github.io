@@ -599,8 +599,8 @@ var worldJson = (function (jsonUrl) {
             if (_data) {
                 _.world = _data;
                 _.land = topojson.feature(_data, _data.objects.land);
-                _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
                 _.countries.features = topojson.feature(_data, _data.objects.countries).features;
+                if (_data.objects.ne_110m_lakes) _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
             } else {
                 return _.world;
             }
@@ -1421,13 +1421,16 @@ var mousePlugin = (function () {
         var wh = [__.options.width, __.options.height];
         _.scale = d3.scaleLinear().domain([30, __.proj.scale()]).range([0.1, 1]);
 
-        _.zoom = d3.zoom().on('zoom', zoom).scaleExtent([0.1, 160]).translateExtent([[0, 0], wh]);
+        _.svg.call(d3.drag().on('start', onStartDrag).on('drag', onDragging).on('end', onEndDrag));
 
-        _.svg.call(d3.drag().filter(function () {
-            var touches = d3.event.touches;
+        _.zoom = d3.zoom().on('zoom', zoom).scaleExtent([0.1, 160]).translateExtent([[0, 0], wh]).filter(function () {
+            var _d3$event = d3.event,
+                touches = _d3$event.touches,
+                type = _d3$event.type;
 
-            return touches === undefined || touches.length === 1;
-        }).on('start', dragstarted).on('end', dragsended).on('drag', dragged));
+            return type === 'wheel' || touches;
+        });
+
         _.svg.call(_.zoom);
 
         // todo: add zoom lifecycle to optimize plugins zoom-able
@@ -1450,7 +1453,7 @@ var mousePlugin = (function () {
             this._.rotate(r);
         }
 
-        function dragstarted() {
+        function onStartDrag() {
             var _this2 = this;
 
             var mouse = d3.mouse(this);
@@ -1471,7 +1474,7 @@ var mousePlugin = (function () {
             _.t2 = 0;
         }
 
-        function dragged() {
+        function onDragging() {
             // DOM update must be onInterval!
             __.drag = true;
             _._this = this;
@@ -1480,7 +1483,7 @@ var mousePlugin = (function () {
             // _.t1+=1; // twice call compare to onInterval
         }
 
-        function dragsended() {
+        function onEndDrag() {
             var _this3 = this;
 
             var drag = __.drag;
@@ -1545,8 +1548,8 @@ var mousePlugin = (function () {
         selectAll: function selectAll(q) {
             if (q) {
                 _.q = q;
-                _.svg.call(d3.zoom().on('zoom start end', null));
-                _.svg.call(d3.drag().on('start', null).on('end', null).on('drag', null));
+                _.svg.call(d3.drag().on('start', null).on('drag', null).on('end', null));
+                _.svg.call(d3.zoom().on('zoom', null));
                 _.svg = d3.selectAll(q);
                 init.call(this);
                 if (this.hoverCanvas) {
@@ -2492,8 +2495,8 @@ var mapSvg = (function (worldUrl) {
             if (_data) {
                 _.world = _data;
                 _.land = topojson.feature(_data, _data.objects.land);
-                _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
                 _.countries.features = topojson.feature(_data, _data.objects.countries).features;
+                if (_data.objects.ne_110m_lakes) _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
             } else {
                 return _.world;
             }
@@ -2756,49 +2759,52 @@ var worldSvg = (function (worldUrl) {
         var __ = this._;
         if (_.world) {
             if (__.options.transparent || __.options.transparentLand) {
-                if (!$.worldBg) {
+                if (!$.worldBgPath) {
                     svgAddWorldBg();
                 }
                 __.proj.clipAngle(180);
-                $.worldBg.attr('d', __.path);
+                $.worldBgPath.attr('d', __.path);
                 __.proj.clipAngle(90);
-            } else if ($.worldBg) {
-                $.worldBg.remove();
-                $.worldBg = null;
+            } else if ($.worldBgPath) {
+                $.worldBgG.remove();
+                $.worldBgPath = null;
             }
             if (__.options.showLand) {
                 if (__.options.showCountries) {
-                    if (!$.countries) {
-                        $.world.remove();
-                        $.world = null;
+                    if (!$.countriesPath) {
+                        $.worldG.remove();
+                        $.worldPath = null;
                         svgAddCountries();
                     }
-                    $.countries.attr('d', __.path);
+                    $.countriesPath.attr('d', __.path);
                 } else {
-                    if (!$.world) {
-                        $.countries.remove();
-                        $.countries = null;
+                    if (!$.worldPath) {
+                        $.countriesG.remove();
+                        $.countriesPath = null;
                         svgAddWorld();
                     }
-                    $.world.attr('d', __.path);
+                    $.worldPath.attr('d', __.path);
                 }
                 if (__.options.showLakes) {
-                    $.lakes.attr('d', __.path);
+                    $.lakesPath.attr('d', __.path);
                 }
             }
         }
     }
 
     function svgAddWorldBg() {
-        $.worldBg = $.g.append('g').attr('class', 'landbg').append('path').datum(_.land).attr('fill', 'rgba(119,119,119,0.2)');
+        $.worldBgG = $.g.append('g').attr('class', 'landbg');
+        $.worldBgPath = $.worldBgG.append('path').datum(_.land).attr('fill', 'rgba(119,119,119,0.2)');
     }
 
     function svgAddWorld() {
-        $.world = $.g.append('g').attr('class', 'land').append('path').datum(_.land);
+        $.worldG = $.g.append('g').attr('class', 'land');
+        $.worldPath = $.worldG.append('path').datum(_.land);
     }
 
     function svgAddCountries() {
-        $.countries = $.g.append('g').attr('class', 'countries').selectAll('path').data(_.countries.features).enter().append('path').attr('class', function (d) {
+        $.countriesG = $.g.append('g').attr('class', 'countries');
+        $.countriesPath = $.countriesG.selectAll('path').data(_.countries.features).enter().append('path').attr('class', function (d) {
             return 'cid-' + d.properties.cid;
         }).attr('id', function (d) {
             return 'x' + d.id;
@@ -2806,7 +2812,8 @@ var worldSvg = (function (worldUrl) {
     }
 
     function svgAddLakes() {
-        $.lakes = $.g.append('g').attr('class', 'lakes').append('path').datum(_.lakes);
+        $.lakesG = $.g.append('g').attr('class', 'lakes').append('path').datum(_.lakes);
+        $.lakesPath = $.lakesG.append('path').datum(_.lakes);
     }
 
     return {
@@ -2849,8 +2856,8 @@ var worldSvg = (function (worldUrl) {
             if (_data) {
                 _.world = _data;
                 _.land = topojson.feature(_data, _data.objects.land);
-                _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
                 _.countries.features = topojson.feature(_data, _data.objects.countries).features;
+                if (_data.objects.ne_110m_lakes) _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
             } else {
                 return _.world;
             }
@@ -2878,13 +2885,13 @@ var worldSvg = (function (worldUrl) {
             return _.svg;
         },
         $world: function $world() {
-            return $.world;
+            return $.worldPath;
         },
         $lakes: function $lakes() {
-            return $.lakes;
+            return $.lakesPath;
         },
         $countries: function $countries() {
-            return $.countries;
+            return $.countriesPath;
         }
     };
 });
@@ -4151,8 +4158,8 @@ var worldCanvas = (function (worldUrl) {
             if (_data) {
                 _.world = _data;
                 _.land = topojson.feature(_data, _data.objects.land);
-                _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
                 _.countries.features = topojson.feature(_data, _data.objects.countries).features;
+                if (_data.objects.ne_110m_lakes) _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
             } else {
                 return _.world;
             }
@@ -6600,128 +6607,6 @@ var inertiaThreejs = (function () {
     };
 });
 
-// https://armsglobe.chromeexperiments.com/
-var inertia2Threejs = (function () {
-    /*eslint no-console: 0 */
-    var _ = {};
-
-    var rotateX = 0,
-        rotateY = 0,
-        rotateVX = 0,
-        rotateVY = 0;
-
-    var dragging = false,
-        rendering = false,
-        draggMove = undefined;
-
-    var rotateXMax = 90 * Math.PI / 180;
-
-    function inertiaDrag() {
-        if (!rendering) {
-            _.removeEventQueue(_.me.name, 'onTween');
-            return;
-        }
-
-        rotateX += rotateVX;
-        rotateY += rotateVY;
-
-        rotateVX *= 0.98;
-        rotateVY *= 0.98;
-
-        if (dragging) {
-            rotateVX *= 0.6;
-            rotateVY *= 0.6;
-        }
-
-        if (rotateX < -rotateXMax) {
-            rotateX = -rotateXMax;
-            rotateVX *= -0.95;
-        }
-
-        if (rotateX > rotateXMax) {
-            rotateX = rotateXMax;
-            rotateVX *= -0.95;
-        }
-
-        if (!dragging && _.rotation.x.toPrecision(5) === rotateX.toPrecision(5) && _.rotation.y.toPrecision(5) === rotateY.toPrecision(5)) {
-            rendering = false;
-        }
-
-        _.rotation.x = rotateX;
-        _.rotation.y = rotateY;
-        _.renderThree(true);
-    }
-
-    function mouseLocation() {
-        var rects = _.node.getClientRects()[0];
-        if (d3.event.touches) {
-            var t = d3.event.touches[0];
-            return [t.clientX - rects.width * 0.5, t.clientY - rects.height * 0.5];
-        } else {
-            return [d3.event.clientX - rects.width * 0.5, d3.event.clientY - rects.height * 0.5];
-        }
-    }
-
-    var cmouse = void 0,
-        pmouse = void 0;
-    function onStartDrag() {
-        dragging = true;
-        rendering = true;
-        draggMove = null;
-        cmouse = mouseLocation();
-        _.removeEventQueue(_.me.name, 'onTween');
-    }
-
-    function onDragging() {
-        if (dragging) {
-            pmouse = cmouse;
-            cmouse = mouseLocation();
-            rotateVY += (cmouse[0] - pmouse[0]) / 2 * 0.005235987755982988; // Math.PI / 180 * 0.3;
-            rotateVX += (cmouse[1] - pmouse[1]) / 2 * 0.005235987755982988; // Math.PI / 180 * 0.3;
-            rotateX = _.rotation.x;
-            rotateY = _.rotation.y;
-            draggMove = true;
-            inertiaDrag();
-        }
-    }
-
-    function onEndDrag() {
-        dragging = false;
-        if (draggMove) {
-            draggMove = false;
-            _.addEventQueue(_.me.name, 'onTween');
-        }
-    }
-
-    function init() {
-        this._.svg.on('mousedown touchstart', onStartDrag).on('mousemove touchmove', onDragging).on('mouseup touchend', onEndDrag);
-    }
-
-    function create() {
-        var tj = this.threejsPlugin;
-        _.node = this._.svg.node();
-        _.rotation = tj.group.rotation;
-        _.renderThree = tj.renderThree;
-        _.addEventQueue = this.__addEventQueue;
-        _.removeEventQueue = this.__removeEventQueue;
-    }
-
-    return {
-        name: 'inertia2Threejs',
-        onInit: function onInit(me) {
-            _.me = me;
-            init.call(this);
-        },
-        onCreate: function onCreate() {
-            create.call(this);
-        },
-        onTween: function onTween() {
-            // requestAnimationFrame()
-            inertiaDrag.call(this);
-        }
-    };
-});
-
 var worldThreejs = (function () {
     var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../globe/world.png';
 
@@ -6762,8 +6647,8 @@ var worldThreejs = (function () {
             if (_data) {
                 _.world = _data;
                 _.land = topojson.feature(_data, _data.objects.land);
-                _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
                 _.countries.features = topojson.feature(_data, _data.objects.countries).features;
+                if (_data.objects.ne_110m_lakes) _.lakes.features = topojson.feature(_data, _data.objects.ne_110m_lakes).features;
             } else {
                 return _.world;
             }
@@ -7685,7 +7570,6 @@ earthjs$2.plugins = {
     oceanThreejs: oceanThreejs,
     imageThreejs: imageThreejs,
     inertiaThreejs: inertiaThreejs,
-    inertia2Threejs: inertia2Threejs,
     worldThreejs: worldThreejs,
     globeThreejs: globeThreejs,
     sphereThreejs: sphereThreejs,
