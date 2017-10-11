@@ -1733,6 +1733,196 @@ var canvasPlugin = (function () {
     };
 });
 
+// https://armsglobe.chromeexperiments.com/
+var inertiaPlugin = (function () {
+    var _ref = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : { zoomScale: [0, 50000] },
+        zoomScale = _ref.zoomScale;
+
+    /*eslint no-console: 0 */
+    var _ = {
+        onDrag: {},
+        onDragVals: [],
+        onDragStart: {},
+        onDragStartVals: [],
+        onDragEnd: {},
+        onDragEndVals: []
+    };
+
+    var rotateX = 0,
+        rotateY = 0,
+        rotateZ = [],
+        rotateVX = 0,
+        rotateVY = 0,
+        previousX = 0,
+        previousY = 0;
+
+    var dragging = false,
+        rendering = false,
+        draggMove = undefined;
+
+    function inertiaDrag() {
+        var _this = this;
+
+        _.onDragVals.forEach(function (v) {
+            return v.call(_this, _.mouse);
+        });
+        if (!rendering) {
+            _.removeEventQueue(_.me.name, 'onTween');
+            _.onDragEndVals.forEach(function (v) {
+                return v.call(_this, _.mouse);
+            });
+            _.this._.refresh();
+            return;
+        }
+
+        rotateVX *= 0.95;
+        rotateVY *= 0.90;
+
+        if (dragging) {
+            rotateVX *= 0.6;
+            rotateVY *= 0.65;
+        }
+
+        if (rotateY < -100) {
+            rotateY = -100;
+            rotateVY *= -0.95;
+        }
+
+        if (rotateY > 100) {
+            rotateY = 100;
+            rotateVY *= -0.95;
+        }
+
+        rotateX += rotateVX;
+        rotateY += rotateVY;
+
+        _.rotate([rotateX, rotateY, rotateZ[2]]);
+
+        if (!dragging && previousX.toPrecision(5) === rotateX.toPrecision(5) && previousY.toPrecision(5) === rotateY.toPrecision(5)) {
+            rendering = false;
+        }
+        previousX = rotateX;
+        previousY = rotateY;
+    }
+
+    function mouseMovement() {
+        var dx = d3.event.sourceEvent.movementX;
+        var dy = -d3.event.sourceEvent.movementY;
+        _.mouse = d3.mouse(this);
+        return [dx, dy];
+    }
+
+    var cmouse = void 0;
+    function onStartDrag() {
+        var _this2 = this;
+
+        dragging = true;
+        rendering = true;
+        draggMove = null;
+        cmouse = mouseMovement.call(this);
+        rotateVX = cmouse[0];
+        rotateVY = cmouse[1];
+        _.onDragStartVals.forEach(function (v) {
+            return v.call(_this2, _.mouse);
+        });
+        _.onDragVals.forEach(function (v) {
+            return v.call(_this2, _.mouse);
+        });
+        _.removeEventQueue(_.me.name, 'onTween');
+    }
+
+    function onDragging() {
+        if (dragging) {
+            draggMove = true;
+            cmouse = mouseMovement.call(this);
+            rotateZ = _.proj.rotate();
+            rotateX = rotateZ[0];
+            rotateY = rotateZ[1];
+            rotateVX += cmouse[0];
+            rotateVY += cmouse[1];
+            inertiaDrag.call(_.this);
+        }
+    }
+
+    function onEndDrag() {
+        dragging = false;
+        if (draggMove) {
+            draggMove = false;
+            _.addEventQueue(_.me.name, 'onTween');
+        }
+    }
+
+    function init() {
+        var __ = this._;
+        var s0 = this._.proj.scale();
+        var _$options = __.options,
+            width = _$options.width,
+            height = _$options.height;
+
+        function zoom() {
+            var z = zoomScale;
+            var r1 = s0 * d3.event.transform.k;
+            if (r1 >= z[0] && r1 <= z[1]) {
+                __.scale(r1);
+            }
+        }
+
+        this._.svg.call(d3.drag().on("start", onStartDrag).on("drag", onDragging).on("end", onEndDrag));
+        // .on('mousedown touchstart', onStartDrag)
+        // .on('mousemove touchmove', onDragging)
+        // .on('mouseup touchend', onEndDrag);
+
+        this._.svg.call(d3.zoom().on('zoom', zoom).scaleExtent([0.1, 160]).translateExtent([[0, 0], [width, height]]).filter(function () {
+            var _d3$event = d3.event,
+                touches = _d3$event.touches,
+                type = _d3$event.type;
+
+            return type === 'wheel' || touches;
+        }));
+    }
+
+    function create() {
+        _.proj = this._.proj;
+        _.rotate = this._.rotate;
+        _.addEventQueue = this.__addEventQueue;
+        _.removeEventQueue = this.__removeEventQueue;
+    }
+
+    return {
+        name: 'inertiaPlugin',
+        onInit: function onInit(me) {
+            _.me = me;
+            _.this = this;
+            init.call(this);
+        },
+        onCreate: function onCreate() {
+            create.call(this);
+        },
+        onTween: function onTween() {
+            // requestAnimationFrame()
+            inertiaDrag.call(this);
+        },
+        onDrag: function onDrag(obj) {
+            Object.assign(_.onDrag, obj);
+            _.onDragVals = Object.keys(_.onDrag).map(function (k) {
+                return _.onDrag[k];
+            });
+        },
+        onDragStart: function onDragStart(obj) {
+            Object.assign(_.onDragStart, obj);
+            _.onDragStartVals = Object.keys(_.onDragStart).map(function (k) {
+                return _.onDragStart[k];
+            });
+        },
+        onDragEnd: function onDragEnd(obj) {
+            Object.assign(_.onDragEnd, obj);
+            _.onDragEndVals = Object.keys(_.onDragEnd).map(function (k) {
+                return _.onDragEnd[k];
+            });
+        }
+    };
+});
+
 // http://bl.ocks.org/syntagmatic/6645345
 var countryCanvas = (function (worldUrl) {
     /*eslint no-console: 0 */
@@ -2241,10 +2431,11 @@ var barSvg = (function (urlBars) {
 
     function create() {
         var __ = this._;
+        var klas = _.me.name;
         svgClipPath.call(this);
-        _.svg.selectAll('.bar').remove();
+        _.svg.selectAll('.bar.' + klas).remove();
         if (_.bars && __.options.showBars) {
-            var gBar = _.svg.append('g').attr('class', 'bar');
+            var gBar = _.svg.append('g').attr('class', 'bar ' + klas);
             var mask = gBar.append('mask').attr('id', 'edge');
             mask.append('rect').attr('x', 0).attr('y', 0).attr('width', '100%').attr('height', '100%').attr('fill', 'white');
             mask.append('use').attr('xlink:href', '#edgeCircle').attr('fill', 'black');
@@ -2389,10 +2580,11 @@ var mapSvg = (function (worldUrl) {
 
     function create() {
         var _this = this;
+        var klas = _.me.name;
         _.flexBox = d3.selectAll(flexbox);
-        _.svg.selectAll('.countries').remove();
+        _.svg.selectAll('.countries.' + klas).remove();
         if (this._.options.showMap) {
-            $.g = _.svg.append('g').attr('class', 'countries');
+            $.g = _.svg.append('g').attr('class', 'countries ' + klas);
             $.countries = $.g.selectAll('path').data(_.countries.features).enter().append('path').attr('class', function (d) {
                 return 'cid-' + d.properties.cid;
             }).attr('id', function (d) {
@@ -2542,10 +2734,11 @@ var haloSvg = (function () {
     }
 
     function create() {
-        _.svg.selectAll('#halo,.halo').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('#halo,.halo.' + klas).remove();
         if (this._.options.showHalo) {
             this.$slc.defs.append('radialGradient').attr('id', 'halo').attr('cx', '50%').attr('cy', '50%').html('\n<stop offset="85%" stop-color="' + haloColor + '" stop-opacity="1"></stop>\n<stop offset="100%" stop-color="' + haloColor + '" stop-opacity="0"></stop>\n');
-            $.halo = _.svg.append('g').attr('class', 'halo').append('ellipse').attr('class', 'noclicks').attr('cx', this._.center[0]).attr('cy', this._.center[1]);
+            $.halo = _.svg.append('g').attr('class', 'halo ' + klas).append('ellipse').attr('class', 'noclicks').attr('cx', this._.center[0]).attr('cy', this._.center[1]);
             resize.call(this);
         }
     }
@@ -2597,13 +2790,14 @@ var dotsSvg = (function (urlDots) {
 
     function create() {
         var __ = this._;
-        _.svg.selectAll('.dot').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('.dot.' + klas).remove();
         if (_.dataDots && __.options.showDots) {
             var circles = [];
             _.circles.forEach(function (d) {
                 circles.push(d.circle);
             });
-            $.dots = _.svg.append('g').attr('class', 'dot').selectAll('path').data(circles).enter().append('path');
+            $.dots = _.svg.append('g').attr('class', 'dot ' + klas).selectAll('path').data(circles).enter().append('path');
             if (_.dataDots.geometry) {
                 var _g = _.dataDots.geometry || {};
                 $.dots.style('stroke-width', _g.lineWidth || 0.2).style('fill', _g.fillStyle || 'rgba(100,0,0,.4)').style('stroke', _g.strokeStyle || 'rgba(119,119,119,.4)').attr('data-index', function (d, i) {
@@ -2735,9 +2929,10 @@ var worldSvg = (function (worldUrl) {
 
     function create() {
         var __ = this._;
-        _.svg.selectAll('.' + _.me.name).remove();
+        var klas = _.me.name;
+        _.svg.selectAll('.world.' + klas).remove();
         if (__.options.showLand) {
-            $.g = _.svg.append('g').attr('class', _.me.name);
+            $.g = _.svg.append('g').attr('class', 'world ' + klas);
             if (_.world) {
                 if (__.options.transparent || __.options.transparentLand) {
                     _.svgAddWorldBg.call(this);
@@ -2913,9 +3108,10 @@ var pingsSvg = (function () {
     }
 
     function create() {
-        _.svg.selectAll('.pings').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('.pings.' + klas).remove();
         if (_.dataPings && this._.options.showPings) {
-            var g = _.svg.append('g').attr('class', 'pings');
+            var g = _.svg.append('g').attr('class', 'pings ' + klas);
             $.ping2 = g.selectAll('.ping-2').data(_.dataPings.features).enter().append('circle').attr('class', 'ping-2').attr('id', function (d, i) {
                 return 'ping-' + i;
             });
@@ -3006,7 +3202,8 @@ var oceanSvg = (function () {
     }
 
     function create() {
-        _.svg.selectAll('#ocean,.ocean').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('#ocean,.ocean.' + klas).remove();
         if (this._.options.showOcean) {
             var c = _.oceanColor;
             var ocean_fill = this.$slc.defs.append('radialGradient').attr('id', 'ocean').attr('cx', '75%').attr('cy', '25%');
@@ -3014,7 +3211,7 @@ var oceanSvg = (function () {
                 c = [c, c];
             }
             ocean_fill.append('stop').attr('offset', '100%').attr('stop-color', c[1]);
-            $.ocean = _.svg.append('g').attr('class', 'ocean').append('circle').attr('cx', this._.center[0]).attr('cy', this._.center[1]).attr('class', 'noclicks');
+            $.ocean = _.svg.append('g').attr('class', 'ocean ' + klas).append('circle').attr('cx', this._.center[0]).attr('cy', this._.center[1]).attr('class', 'noclicks');
             resize.call(this);
         }
     }
@@ -3072,10 +3269,11 @@ var sphereSvg = (function () {
     }
 
     function create() {
-        _.svg.selectAll('#glow,.sphere').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('#glow,.sphere.' + klas).remove();
         if (this._.options.showSphere) {
             this.$slc.defs.nodes()[0].append('\n<filter id=\'glow\'>\n    <feColorMatrix type=\'matrix\'\n        values=\n        \'0 0 0 0   0\n         0 0 0 0.9 0\n         0 0 0 0.9 0\n         0 0 0 1   0\'/>\n    <feGaussianBlur stdDeviation=\'5.5\' result=\'coloredBlur\'/>\n    <feMerge>\n        <feMergeNode in=\'coloredBlur\'/>\n        <feMergeNode in=\'SourceGraphic\'/>\n    </feMerge>\n</filter>\n');
-            $.sphere = _.svg.append('g').attr('class', 'sphere').append('circle').attr('cx', this._.center[0]).attr('cy', this._.center[1]).attr('class', 'noclicks').attr('filter', 'url(#glow)');
+            $.sphere = _.svg.append('g').attr('class', 'sphere ' + klas).append('circle').attr('cx', this._.center[0]).attr('cy', this._.center[1]).attr('class', 'noclicks').attr('filter', 'url(#glow)');
             resize.call(this);
         }
     }
@@ -3180,7 +3378,8 @@ var placesSvg = (function (urlPlaces) {
     }
 
     function create() {
-        _.svg.selectAll('.points,.labels').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('.points.' + klas + ',.labels.' + klas).remove();
         if (_.places) {
             if (this._.options.showPlaces) {
                 svgAddPlacePoints.call(this);
@@ -3191,11 +3390,13 @@ var placesSvg = (function (urlPlaces) {
     }
 
     function svgAddPlacePoints() {
-        $.placePoints = _.svg.append('g').attr('class', 'points').selectAll('path').data(_.places.features).enter().append('path').attr('class', 'point');
+        var klas = _.me.name;
+        $.placePoints = _.svg.append('g').attr('class', 'points ' + klas).selectAll('path').data(_.places.features).enter().append('path').attr('class', 'point');
     }
 
     function svgAddPlaceLabels() {
-        $.placeLabels = _.svg.append('g').attr('class', 'labels').selectAll('text').data(_.places.features).enter().append('text').attr('class', 'label').text(function (d) {
+        var klas = _.me.name;
+        $.placeLabels = _.svg.append('g').attr('class', 'labels ' + klas).selectAll('text').data(_.places.features).enter().append('text').attr('class', 'label').text(function (d) {
             return d.properties.name;
         });
     }
@@ -3376,23 +3577,25 @@ var fauxGlobeSvg = (function () {
 
     function svgAddGlobeShading() {
         var __ = this._;
-        _.svg.selectAll('#shading,.shading').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('#shading,.shading.' + klas).remove();
         if (__.options.showGlobeShading) {
             var globe_shading = this.$slc.defs.append('radialGradient').attr('id', 'shading').attr('cx', '50%').attr('cy', '40%');
             globe_shading.append('stop').attr('offset', '50%').attr('stop-color', '#9ab').attr('stop-opacity', '0');
             globe_shading.append('stop').attr('offset', '100%').attr('stop-color', '#3e6184').attr('stop-opacity', '0.3');
-            $.globeShading = _.svg.append('g').attr('class', 'shading').append('circle').attr('cx', __.center[0]).attr('cy', __.center[1]).attr('r', __.proj.scale()).attr('class', 'noclicks').style('fill', 'url(#shading)');
+            $.globeShading = _.svg.append('g').attr('class', 'shading ' + klas).append('circle').attr('cx', __.center[0]).attr('cy', __.center[1]).attr('r', __.proj.scale()).attr('class', 'noclicks').style('fill', 'url(#shading)');
         }
     }
 
     function svgAddGlobeHilight() {
         var __ = this._;
-        _.svg.selectAll('#hilight,.hilight').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('#hilight,.hilight.' + klas).remove();
         if (__.options.showGlobeHilight) {
             var globe_highlight = this.$slc.defs.append('radialGradient').attr('id', 'hilight').attr('cx', '75%').attr('cy', '25%');
             globe_highlight.append('stop').attr('offset', '5%').attr('stop-color', '#ffd').attr('stop-opacity', '0.6');
             globe_highlight.append('stop').attr('offset', '100%').attr('stop-color', '#ba9').attr('stop-opacity', '0.2');
-            $.globeHilight = _.svg.append('g').attr('class', 'hilight').append('circle').attr('cx', __.center[0]).attr('cy', __.center[1]).attr('r', __.proj.scale()).attr('class', 'noclicks').style('fill', 'url(#hilight)');
+            $.globeHilight = _.svg.append('g').attr('class', 'hilight ' + klas).append('circle').attr('cx', __.center[0]).attr('cy', __.center[1]).attr('r', __.proj.scale()).attr('class', 'noclicks').style('fill', 'url(#hilight)');
         }
     }
 
@@ -3449,9 +3652,10 @@ var graticuleSvg = (function () {
     }
 
     function create() {
-        _.svg.selectAll('.graticule').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('.graticule.' + klas).remove();
         if (this._.options.showGraticule) {
-            $.graticule = _.svg.append('g').attr('class', 'graticule').append('path').datum(_.graticule).attr('class', 'noclicks');
+            $.graticule = _.svg.append('g').attr('class', 'graticule ' + klas).append('path').datum(_.graticule).attr('class', 'noclicks');
             refresh.call(this);
         }
     }
@@ -3508,12 +3712,13 @@ var dropShadowSvg = (function () {
 
     function create() {
         var __ = this._;
-        _.svg.selectAll('#drop_shadow,.drop_shadow').remove();
+        var klas = _.me.name;
+        _.svg.selectAll('#drop_shadow,.drop_shadow.' + klas).remove();
         if (__.options.showDropShadow) {
             var drop_shadow = this.$slc.defs.append('radialGradient').attr('id', 'drop_shadow').attr('cx', '50%').attr('cy', '50%');
             drop_shadow.append('stop').attr('offset', '20%').attr('stop-color', '#000').attr('stop-opacity', '.5');
             drop_shadow.append('stop').attr('offset', '100%').attr('stop-color', '#000').attr('stop-opacity', '0');
-            $.dropShadow = _.svg.append('g').attr('class', 'drop_shadow').append('ellipse').attr('cx', __.center[0]).attr('class', 'noclicks').style('fill', 'url(#drop_shadow)');
+            $.dropShadow = _.svg.append('g').attr('class', 'drop_shadow ' + klas).append('ellipse').attr('cx', __.center[0]).attr('class', 'noclicks').style('fill', 'url(#drop_shadow)');
             resize.call(this);
         }
     }
@@ -7522,6 +7727,7 @@ earthjs$2.plugins = {
     mousePlugin: mousePlugin,
     configPlugin: configPlugin,
     canvasPlugin: canvasPlugin,
+    inertiaPlugin: inertiaPlugin,
     countryCanvas: countryCanvas,
     threejsPlugin: threejsPlugin,
     dblClickCanvas: dblClickCanvas,
