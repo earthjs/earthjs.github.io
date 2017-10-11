@@ -1806,22 +1806,24 @@ var inertiaPlugin = (function () {
     }
 
     function mouseMovement() {
-        var dx = d3.event.sourceEvent.movementX;
-        var dy = -d3.event.sourceEvent.movementY;
         _.mouse = d3.mouse(this);
-        return [dx, dy];
+        var sourceEvent = d3.event.sourceEvent;
+
+        var t = sourceEvent.touches ? sourceEvent.touches[0] : sourceEvent;
+        return [t.clientX, -t.clientY];
     }
 
-    var cmouse = void 0;
+    var cmouse = void 0,
+        pmouse = void 0;
     function onStartDrag() {
         var _this2 = this;
 
+        rotateVX = 0;
+        rotateVY = 0;
         dragging = true;
         rendering = true;
         draggMove = null;
         cmouse = mouseMovement.call(this);
-        rotateVX = cmouse[0];
-        rotateVY = cmouse[1];
         _.onDragStartVals.forEach(function (v) {
             return v.call(_this2, _.mouse);
         });
@@ -1834,12 +1836,13 @@ var inertiaPlugin = (function () {
     function onDragging() {
         if (dragging) {
             draggMove = true;
+            pmouse = cmouse;
             cmouse = mouseMovement.call(this);
             rotateZ = _.proj.rotate();
             rotateX = rotateZ[0];
             rotateY = rotateZ[1];
-            rotateVX += cmouse[0];
-            rotateVY += cmouse[1];
+            rotateVX += cmouse[0] - pmouse[0];
+            rotateVY += cmouse[1] - pmouse[1];
             inertiaDrag.call(_.this);
         }
     }
@@ -1854,31 +1857,29 @@ var inertiaPlugin = (function () {
 
     function init() {
         var __ = this._;
-        var s0 = this._.proj.scale();
+        var s0 = __.proj.scale();
+        function zoomAndDrag() {
+            var _d3$event$sourceEvent = d3.event.sourceEvent,
+                type = _d3$event$sourceEvent.type,
+                touches = _d3$event$sourceEvent.touches;
+
+            if (type === 'wheel' || touches && touches.length === 2) {
+                var r1 = s0 * d3.event.transform.k;
+                if (r1 >= zoomScale[0] && r1 <= zoomScale[1]) {
+                    __.scale(r1);
+                }
+                rotateVX = 0;
+                rotateVY = 0;
+            } else {
+                onDragging.call(this);
+            }
+        }
+
         var _$options = __.options,
             width = _$options.width,
             height = _$options.height;
 
-        function zoom() {
-            var z = zoomScale;
-            var r1 = s0 * d3.event.transform.k;
-            if (r1 >= z[0] && r1 <= z[1]) {
-                __.scale(r1);
-            }
-        }
-
-        this._.svg.call(d3.drag().on("start", onStartDrag).on("drag", onDragging).on("end", onEndDrag));
-        // .on('mousedown touchstart', onStartDrag)
-        // .on('mousemove touchmove', onDragging)
-        // .on('mouseup touchend', onEndDrag);
-
-        this._.svg.call(d3.zoom().on('zoom', zoom).scaleExtent([0.1, 160]).translateExtent([[0, 0], [width, height]]).filter(function () {
-            var _d3$event = d3.event,
-                touches = _d3$event.touches,
-                type = _d3$event.type;
-
-            return type === 'wheel' || touches;
-        }));
+        this._.svg.call(d3.zoom().on("start", onStartDrag).on('zoom', zoomAndDrag).on("end", onEndDrag).scaleExtent([0.1, 160]).translateExtent([[0, 0], [width, height]]));
     }
 
     function create() {
