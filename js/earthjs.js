@@ -1090,21 +1090,20 @@ var hoverCanvas = (function () {
         }
         var __ = this._;
         var _this = this;
-        _.hoverHandler = function () {
+        _.hoverHandler = function (event, mouse) {
             var _this2 = this;
 
-            var event = d3.event;
             if (__.drag || !event) {
                 return;
             }
             if (event.sourceEvent) {
                 event = event.sourceEvent;
             }
-            var mouse = [event.clientX, event.clientY]; //d3.mouse(this);
-            var pos = __.proj.invert(d3.mouse(this));
+            var xmouse = [event.clientX, event.clientY];
+            var pos = __.proj.invert(mouse);
             _.pos = pos;
             _.dot = null;
-            _.mouse = mouse;
+            _.mouse = xmouse;
             _.country = null;
             if (__.options.showDots) {
                 _.onCircleVals.forEach(function (v) {
@@ -1133,12 +1132,9 @@ var hoverCanvas = (function () {
                 _.ocountry2 = _.country;
             }
         };
-        _.svg.on('mousemove', _.hoverHandler);
-        if (this.mousePlugin) {
-            this.mousePlugin.onDrag({
-                hoverCanvas: _.hoverHandler
-            });
-        }
+        _.svg.on('mousemove', function () {
+            _.hoverHandler.call(this, d3.event, d3.mouse(this));
+        });
     }
 
     function findCountry(pos) {
@@ -1212,11 +1208,6 @@ var hoverCanvas = (function () {
                 mouse: _.mouse,
                 country: _.country
             };
-        },
-        registerMouseDrag: function registerMouseDrag() {
-            this.mousePlugin.onDrag({
-                hoverCanvas: _.hoverHandler
-            });
         }
     };
 });
@@ -1277,8 +1268,9 @@ var clickCanvas = (function () {
                 });
             }
         };
-        if (this.mousePlugin) {
-            this.mousePlugin.onClick({
+        var clickPlugin = this.mousePlugin || this.inertiaPlugin;
+        if (clickPlugin) {
+            clickPlugin.onClick({
                 clickCanvas: mouseClickHandler
             });
         }
@@ -1410,7 +1402,7 @@ var mousePlugin = (function () {
         r(__);
         __.rotate(_.r);
         _.onDragVals.forEach(function (v) {
-            v.call(_this, _.mouse);
+            v.call(_this, _.event, _.mouse);
         });
     }
 
@@ -1462,10 +1454,10 @@ var mousePlugin = (function () {
             q0 = versor(r0);
             __.drag = null;
             _.onDragStartVals.forEach(function (v) {
-                return v.call(_this2, mouse);
+                return v.call(_this2, _.event, mouse);
             });
             _.onDragVals.forEach(function (v) {
-                return v.call(_this2, mouse);
+                return v.call(_this2, _.event, mouse);
             });
             __.refresh();
             _.mouse = mouse;
@@ -1506,14 +1498,14 @@ var mousePlugin = (function () {
                 r(__);
                 __.rotate(_.r);
                 _.onDragVals.forEach(function (v) {
-                    return v.call(_._this, _.mouse);
+                    return v.call(_._this, _.event, _.mouse);
                 });
                 _.sync.forEach(function (g) {
                     return rotate.call(g, _.r);
                 });
             }
             _.onDragEndVals.forEach(function (v) {
-                return v.call(_this3, _.mouse);
+                return v.call(_this3, _.event, _.mouse);
             });
             __.refresh();
             // console.log('ttl:',_.t1,_.t2);
@@ -1622,6 +1614,7 @@ var configPlugin = (function () {
 var canvasPlugin = (function () {
     /*eslint no-console: 0 */
     var _ = {
+        contexts: [],
         canvas: null,
         path: null,
         q: null
@@ -1644,6 +1637,9 @@ var canvasPlugin = (function () {
                 _.canvas = fBody.append('canvas');
             }
             _.canvas.attr('x', 0).attr('y', 0).attr('width', __.options.width).attr('height', __.options.height);
+            _.contexts = _.canvas.nodes().map(function (obj) {
+                return obj.getContext('2d');
+            });
         }
         if (_.canvas) {
             refresh.call(this);
@@ -1655,9 +1651,10 @@ var canvasPlugin = (function () {
             width = _$options.width,
             height = _$options.height;
 
-        _.canvas.each(function () {
-            this.getContext('2d').clearRect(0, 0, width, height);
-        });
+        var l = _.contexts.length;
+        while (l--) {
+            _.contexts[l].clearRect(0, 0, width, height);
+        }
     }
 
     return {
@@ -1740,12 +1737,18 @@ var inertiaPlugin = (function () {
 
     /*eslint no-console: 0 */
     var _ = {
+        sync: [],
         onDrag: {},
         onDragVals: [],
         onDragStart: {},
         onDragStartVals: [],
         onDragEnd: {},
-        onDragEndVals: []
+        onDragEndVals: [],
+        onClick: {},
+        onClickVals: [],
+        onDblClick: {},
+        onDblClickVals: [],
+        stalledDrag: 0
     };
 
     var rotateX = 0,
@@ -1760,19 +1763,37 @@ var inertiaPlugin = (function () {
         rendering = false,
         draggMove = undefined;
 
-    function inertiaDrag() {
+    function onclick() {
+        _.onClickVals.forEach(function (v) {
+            v.call(_._this, _.event, _.mouse);
+        });
+    }
+
+    function ondblclick() {
+        _.onDblClickVals.forEach(function (v) {
+            v.call(_._this, _.event, _.mouse);
+        });
+    }
+
+    function stopDrag() {
         var _this = this;
 
+        _.this._.drag = false;
+        _.this._.refresh();
+        _.onDragEndVals.forEach(function (v) {
+            return v.call(_this, _.event, _.mouse);
+        });
+    }
+
+    function inertiaDrag() {
+        var _this2 = this;
+
         _.onDragVals.forEach(function (v) {
-            return v.call(_this, _.mouse);
+            return v.call(_this2, _.event, _.mouse);
         });
         if (!rendering) {
             _.removeEventQueue(_.me.name, 'onTween');
-            _.onDragEndVals.forEach(function (v) {
-                return v.call(_this, _.mouse);
-            });
-            _.this._.drag = false;
-            _.this._.refresh();
+            stopDrag();
             return;
         }
 
@@ -1797,7 +1818,12 @@ var inertiaPlugin = (function () {
         rotateX += rotateVX;
         rotateY += rotateVY;
 
-        _.rotate([rotateX, rotateY, rotateZ[2]]);
+        var r = [rotateX, rotateY, rotateZ[2]];
+        var l = _.sync.length;
+        _.rotate(r);
+        while (l--) {
+            _.sync[l]._.rotate(r);
+        }
 
         if (!dragging && previousX.toPrecision(5) === rotateX.toPrecision(5) && previousY.toPrecision(5) === rotateY.toPrecision(5)) {
             rendering = false;
@@ -1807,8 +1833,9 @@ var inertiaPlugin = (function () {
     }
 
     function mouseMovement() {
+        _.event = d3.event;
         _.mouse = d3.mouse(this);
-        var sourceEvent = d3.event.sourceEvent;
+        var sourceEvent = _.event.sourceEvent;
 
         if (sourceEvent) {
             // sometime sourceEvent=null
@@ -1820,7 +1847,7 @@ var inertiaPlugin = (function () {
     var cmouse = void 0,
         pmouse = void 0;
     function onStartDrag() {
-        var _this2 = this;
+        var _this3 = this;
 
         rotateVX = 0;
         rotateVY = 0;
@@ -1829,10 +1856,10 @@ var inertiaPlugin = (function () {
         draggMove = null;
         cmouse = mouseMovement.call(this);
         _.onDragStartVals.forEach(function (v) {
-            return v.call(_this2, _.mouse);
+            return v.call(_this3, _.event, _.mouse);
         });
         _.onDragVals.forEach(function (v) {
-            return v.call(_this2, _.mouse);
+            return v.call(_this3, _.event, _.mouse);
         });
         _.removeEventQueue(_.me.name, 'onTween');
         _.this._.drag = null;
@@ -1855,6 +1882,8 @@ var inertiaPlugin = (function () {
                 cmouse = pmouse;
             }
             _.this._.drag = true;
+            _.stalledDrag = 0;
+            _._this = this;
         }
     }
 
@@ -1863,6 +1892,21 @@ var inertiaPlugin = (function () {
         if (draggMove) {
             draggMove = false;
             _.addEventQueue(_.me.name, 'onTween');
+        } else {
+            stopDrag();
+            _.event = d3.event;
+            if (draggMove === null) {
+                if (_.wait) {
+                    clearTimeout(_.wait);
+                    _.wait = null;
+                    ondblclick();
+                } else {
+                    _.wait = setTimeout(function () {
+                        _.wait = false;
+                        onclick();
+                    }, 250);
+                }
+            }
         }
     }
 
@@ -1877,7 +1921,11 @@ var inertiaPlugin = (function () {
             if (type === 'wheel' || touches && touches.length === 2) {
                 var r1 = s0 * d3.event.transform.k;
                 if (r1 >= zoomScale[0] && r1 <= zoomScale[1]) {
+                    var l = _.sync.length;
                     __.scale(r1);
+                    while (l--) {
+                        _.sync[l]._.scale(r1);
+                    }
                 }
                 rotateVX = 0;
                 rotateVY = 0;
@@ -1890,7 +1938,7 @@ var inertiaPlugin = (function () {
             width = _$options.width,
             height = _$options.height;
 
-        this._.svg.call(d3.zoom().on("start", onStartDrag).on('zoom', zoomAndDrag).on("end", onEndDrag).scaleExtent([0.1, 160]).translateExtent([[0, 0], [width, height]]));
+        _.svg.call(d3.zoom().on("start", onStartDrag).on('zoom', zoomAndDrag).on("end", onEndDrag).scaleExtent([0.1, 160]).translateExtent([[0, 0], [width, height]]));
     }
 
     function create() {
@@ -1905,14 +1953,38 @@ var inertiaPlugin = (function () {
         onInit: function onInit(me) {
             _.me = me;
             _.this = this;
+            _.svg = this._.svg;
             init.call(this);
         },
         onCreate: function onCreate() {
             create.call(this);
         },
+        selectAll: function selectAll(q) {
+            if (q) {
+                _.q = q;
+                _.svg.call(d3.zoom().on('start', null).on('zoom', null).on('end', null));
+                _.svg = d3.selectAll(q);
+                init.call(this);
+                if (this.hoverCanvas) {
+                    this.hoverCanvas.selectAll(q);
+                }
+            }
+            return _.svg;
+        },
+        onInterval: function onInterval() {
+            if (draggMove && _.stalledDrag++ > 10) {
+                // reset inertia
+                _.stalledDrag = 0;
+                rotateVX = 0;
+                rotateVY = 0;
+            }
+        },
         onTween: function onTween() {
             // requestAnimationFrame()
             inertiaDrag.call(this);
+        },
+        sync: function sync(arr) {
+            _.sync = arr;
         },
         onDrag: function onDrag(obj) {
             Object.assign(_.onDrag, obj);
@@ -1930,6 +2002,21 @@ var inertiaPlugin = (function () {
             Object.assign(_.onDragEnd, obj);
             _.onDragEndVals = Object.keys(_.onDragEnd).map(function (k) {
                 return _.onDragEnd[k];
+            });
+        },
+        stopDrag: function stopDrag() {
+            rendering = false;
+        },
+        onClick: function onClick(obj) {
+            Object.assign(_.onClick, obj);
+            _.onClickVals = Object.keys(_.onClick).map(function (k) {
+                return _.onClick[k];
+            });
+        },
+        onDblClick: function onDblClick(obj) {
+            Object.assign(_.onDblClick, obj);
+            _.onDblClickVals = Object.keys(_.onDblClick).map(function (k) {
+                return _.onDblClick[k];
             });
         }
     };
@@ -2152,9 +2239,6 @@ var threejsPlugin = (function () {
         onResize: function onResize() {
             _scale.call(this);
         },
-        group: function group() {
-            return _.group;
-        },
         addGroup: function addGroup(obj) {
             var _this2 = this;
 
@@ -2289,11 +2373,13 @@ var dblClickCanvas = (function () {
                 });
             }
         };
-        if (this.mousePlugin) {
-            this.mousePlugin.onDblClick({
+        var dblClickPlugin = this.mousePlugin || this.inertiaPlugin;
+        if (dblClickPlugin) {
+            dblClickPlugin.onDblClick({
                 dblClickCanvas: mouseDblClickHandler
             });
         }
+        __.options.showLand = true;
     }
 
     return {
@@ -3935,6 +4021,7 @@ var countryTooltipSvg = (function (countryNameUrl) {
             _.show = false;
             countryTooltip.style('opacity', 0).style('display', 'none');
         }).on('mousemove', function () {
+            _.mouse = d3.mouse(this);
             if (_this._.options.showCountryTooltip) {
                 refresh();
             }
@@ -3963,7 +4050,7 @@ var countryTooltipSvg = (function (countryNameUrl) {
         },
         onRefresh: function onRefresh() {
             if (this._.drag && _.show) {
-                refresh(this.mousePlugin.mouse());
+                refresh.call(this, _.mouse);
             }
         },
         data: function data(_data) {
@@ -3997,13 +4084,15 @@ var pinCanvas = (function (urlJson, urlImage) {
             var __ = this._;
             var center = __.proj.invert(__.center);
             this.canvasPlugin.render(function (context) {
-                _.dataPin.features.forEach(function (d) {
-                    var coordinates = d.geometry.coordinates;
-                    if (d3.geoDistance(coordinates, center) <= 1.57) {
-                        var a = __.path.centroid(d);
-                        context.drawImage(_.image, a[0] - _.pX, a[1] - _.pY, _.wh[0], _.wh[1]);
-                    }
-                });
+                if (_.dataPin) {
+                    _.dataPin.features.forEach(function (d) {
+                        var coordinates = d.geometry.coordinates;
+                        if (d3.geoDistance(coordinates, center) <= 1.57) {
+                            var a = __.path.centroid(d);
+                            context.drawImage(_.image, a[0] - _.pX, a[1] - _.pY, _.wh[0], _.wh[1]);
+                        }
+                    });
+                }
             }, _.drawTo);
         }
     }
@@ -4534,6 +4623,9 @@ var centerCanvas = (function () {
             var c = this.worldCanvas.countries();
             var focusedCountry = country(c, id),
                 p = d3.geoCentroid(focusedCountry);
+            if (this.inertiaPlugin) {
+                this.inertiaPlugin.stopDrag();
+            }
             transition.call(this, p);
         },
         focused: function focused(fn) {
@@ -4900,6 +4992,7 @@ var countryTooltipCanvas = (function (countryNameUrl) {
 
         var hoverHandler = function hoverHandler(event, data) {
             // fn with  current context
+            _.mouse = [event.clientX, event.clientY];
             if (_this._.drag !== null && data && _this._.options.showCountryTooltip) {
                 var country = countryName(data);
                 if (country && !(_this.barTooltipSvg && _this.barTooltipSvg.visible())) {
@@ -4931,7 +5024,7 @@ var countryTooltipCanvas = (function (countryNameUrl) {
         },
         onRefresh: function onRefresh() {
             if (this._.drag) {
-                refresh(this.mousePlugin.mouse());
+                refresh.call(this, _.mouse);
             }
         },
         data: function data(_data) {
@@ -6375,15 +6468,14 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
     function _reload() {
         all_tracks = [];
         point_cache = [];
-        var tj = this.threejsPlugin;
         loadFlights.call(this);
-        var grp = tj.group();
-        var arr = grp.children;
+        var tj = this.threejsPlugin;
+        var arr = tj.group.children;
         var idx = arr.findIndex(function (obj) {
             return obj.name === 'flightLineThreejs';
         });
-        grp.remove(arr[idx]);
-        grp.add(_.sphereObject);
+        tj.group.remove(arr[idx]);
+        tj.group.add(_.sphereObject);
         tj.renderThree();
     }
 
@@ -7546,7 +7638,7 @@ var selectCountryMix = (function () {
     var _ = {};
 
     function init() {
-        var g = this.register(earthjs.plugins.mousePlugin()).register(earthjs.plugins.hoverCanvas()).register(earthjs.plugins.clickCanvas()).register(earthjs.plugins.centerCanvas()).register(earthjs.plugins.canvasPlugin()).register(earthjs.plugins.countryCanvas()).register(earthjs.plugins.autorotatePlugin()).register(earthjs.plugins.worldCanvas(worldUrl)).register(earthjs.plugins.threejsPlugin());
+        var g = this.register(earthjs.plugins.inertiaPlugin()).register(earthjs.plugins.hoverCanvas()).register(earthjs.plugins.clickCanvas()).register(earthjs.plugins.centerCanvas()).register(earthjs.plugins.canvasPlugin()).register(earthjs.plugins.countryCanvas()).register(earthjs.plugins.autorotatePlugin()).register(earthjs.plugins.worldCanvas(worldUrl)).register(earthjs.plugins.threejsPlugin());
         g.canvasPlugin.selectAll('.ej-canvas');
         g._.options.showSelectedCountry = true;
         g._.options.showBorder = false;
@@ -7640,7 +7732,7 @@ var selectCountryMix2 = (function () {
     var _ = {};
 
     function init() {
-        var g = this.register(earthjs.plugins.worldJson(worldUrl)).register(earthjs.plugins.mousePlugin()).register(earthjs.plugins.hoverCanvas()).register(earthjs.plugins.clickCanvas()).register(earthjs.plugins.centerCanvas()).register(earthjs.plugins.countryCanvas()).register(earthjs.plugins.threejsPlugin()).register(earthjs.plugins.autorotatePlugin());
+        var g = this.register(earthjs.plugins.worldJson(worldUrl)).register(earthjs.plugins.inertiaPlugin()).register(earthjs.plugins.hoverCanvas()).register(earthjs.plugins.clickCanvas()).register(earthjs.plugins.centerCanvas()).register(earthjs.plugins.countryCanvas()).register(earthjs.plugins.threejsPlugin()).register(earthjs.plugins.autorotatePlugin());
         if (worldImg) {
             g.register(earthjs.plugins.imageThreejs(worldImg));
         }
