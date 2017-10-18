@@ -506,13 +506,14 @@ if (window.d3 === undefined) {
 }
 window.d3.earthjs = earthjs$2;
 
-var baseCsv = (function (csvUrl) {
+var baseCsv = function () {
     /*eslint no-console: 0 */
-    var _ = { data: null };
+    var _ = { data: [] };
+    var args = arguments;
 
     return {
         name: 'baseCsv',
-        urls: csvUrl && [csvUrl],
+        urls: Array.prototype.slice.call(args),
         onReady: function onReady(err, csv) {
             _.me.data(csv);
         },
@@ -537,9 +538,16 @@ var baseCsv = (function (csvUrl) {
 
                 return { data: data };
             }
+        },
+        arrToJson: function arrToJson(k, v) {
+            var json = {};
+            _.data.forEach(function (x) {
+                return json[x[k]] = x[v];
+            });
+            return json;
         }
     };
-});
+};
 
 var baseGeoJson = (function (jsonUrl) {
     /*eslint no-console: 0 */
@@ -630,6 +638,64 @@ var worldJson = (function (jsonUrl) {
     };
 });
 
+var world3dJson = function () {
+    // function is required for arguments works
+    /*eslint no-console: 0 */
+    var _ = {
+        data: {},
+        nm_to_id: {},
+        geometries: []
+    };
+    var args = arguments;
+
+    return {
+        name: 'world3dJson',
+        urls: Array.prototype.slice.call(args),
+        onReady: function onReady(err, json, nm_to_id) {
+            _.me.data(json);
+            if (nm_to_id) {
+                _.me.arrayOfGeometry(nm_to_id);
+            }
+        },
+        onInit: function onInit(me) {
+            _.me = me;
+        },
+        data: function data(_data) {
+            if (_data) {
+                _.data = _data;
+            } else {
+                return _.data;
+            }
+        },
+        message: function message(fn) {
+            _.data = _.data.map(fn);
+        },
+        allData: function allData(all) {
+            if (all) {
+                _.data = all.data;
+            } else {
+                var data = _.data,
+                    geometries = _.geometries,
+                    nm_to_id = _.nm_to_id;
+
+                return { data: data, geometries: geometries, nm_to_id: nm_to_id };
+            }
+        },
+        arrayOfGeometry: function arrayOfGeometry(data) {
+            var features = [];
+            for (var name in _.data) {
+                var geometry = _.data[name];
+                var cid = data[name.toUpperCase()];
+                var properties = { cid: cid };
+                geometry.properties = properties;
+                features.push({ properties: properties, geometry: geometry });
+            }
+            _.nm_to_id = data;
+            _.geometries = { features: features };
+        }
+    };
+};
+
 var toConsumableArray = function (arr) {
   if (Array.isArray(arr)) {
     for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) arr2[i] = arr[i];
@@ -648,6 +714,7 @@ var choroplethCsv = (function (csvUrl) {
         cid: null,
         data: null,
         color: null,
+        oldData: null,
         selectedColorId: null,
         selectedCountryId: null,
         countries: { type: 'FeatureCollection', features: [] }
@@ -685,11 +752,15 @@ var choroplethCsv = (function (csvUrl) {
         data: function data(_data) {
             if (_data) {
                 _.data = _data;
+                _.oldData = _data;
                 _.data.getPath = getPath;
                 _.data.updatePath = updatePath;
             } else {
                 return _.data;
             }
+        },
+        filter: function filter(fn) {
+            _.data = _.oldData.filter(fn);
         },
         mergeData: function mergeData(json, arr) {
             var cn = _.data;
@@ -2304,6 +2375,18 @@ var threejsPlugin = (function () {
             var euler = this._.versor.rotation(trans);
             euler[0] += 90;
             return euler;
+        },
+        light3d: function light3d() {
+            var sphereObject = new THREE.Group();
+            var ambient = new THREE.AmbientLight(0x777777);
+            var light1 = new THREE.DirectionalLight(0xffffff);
+            var light2 = new THREE.DirectionalLight(0xffffff);
+            light1.position.set(1, 0, 1);
+            light2.position.set(-1, 0, 1);
+            sphereObject.add(ambient);
+            sphereObject.add(light1);
+            sphereObject.add(light2);
+            return sphereObject;
         }
     };
 });
@@ -7262,61 +7345,55 @@ if (window.THREE) {
 // import data from './globe';
 var world3d = (function () {
     var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.geometry.json';
-    var landUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/gold.jpg';
+    var imgUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/gold.jpg';
     var inner = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0.9;
     var rtt = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : -1.57;
 
     /*eslint no-console: 0 */
     var _ = {
-        sphereObject: new THREE.Object3D(),
-        tween: null
+        style: {},
+        tween: null,
+        sphereObject: new THREE.Group()
     };
-
-    function loadCountry() {
-        var data = _.world;
-        for (var name in data) {
-            var geometry = new Map3DGeometry(data[name], inner);
-            _.sphereObject.add(data[name].mesh = new THREE.Mesh(geometry, _.material));
-        }
-        _.loaded = true;
-    }
-
+    var vertexShader = '\nvarying vec2 vN;\nvoid main() {\nvec4 p = vec4( position, 1. );\nvec3 e = normalize( vec3( modelViewMatrix * p ) );\nvec3 n = normalize( normalMatrix * normal );\nvec3 r = reflect( e, n );\nfloat m = 2. * length( vec3( r.xy, r.z + 1. ) );\nvN = r.xy / m + .5;\ngl_Position = projectionMatrix * modelViewMatrix * p;\n}';
+    var fragmentShader = '\nuniform sampler2D sampler;\nuniform vec3 diffuse;\nvarying vec2 vN;\nvoid main() {\nvec4 tex = texture2D( sampler, vN );\ngl_FragColor = tex + vec4( diffuse, 0 ) * 0.5;\n}';
     function init() {
+        var tj = this.threejsPlugin;
         var r = this._.proj.scale() + 5;
         this._.options.showWorld = true;
         _.sphereObject.rotation.y = rtt;
         _.sphereObject.scale.set(r, r, r);
-        makeEnvMapMaterial.call(this, landUrl, function (material) {
-            _.material = material;
-            if (_.world && !_.loaded) {
-                loadCountry();
+        _.sphereObject.name = _.me.name;
+        _.uniforms = {
+            sampler: { type: 't', value: tj.texture(imgUrl) },
+            diffuse: { type: 'c', value: new THREE.Color(_.style.land || 'black') }
+        };
+    }
+
+    var material = void 0,
+        uniforms = void 0;
+    function loadCountry() {
+        var data = _.world;
+        uniforms = _.uniforms;
+        var choropleth = this._.options.choropleth;
+
+        material = new THREE.ShaderMaterial({ uniforms: uniforms, vertexShader: vertexShader, fragmentShader: fragmentShader });
+        for (var name in data) {
+            if (choropleth) {
+                var properties = data[name].properties || { color: _.style.countries };
+                var diffuse = { type: 'c', value: new THREE.Color(properties.color || 'black') };
+                uniforms = Object.assign({}, _.uniforms, { diffuse: diffuse });
+                material = new THREE.ShaderMaterial({ uniforms: uniforms, vertexShader: vertexShader, fragmentShader: fragmentShader });
             }
-        });
+            var geometry = new Map3DGeometry(data[name], inner);
+            _.sphereObject.add(data[name].mesh = new THREE.Mesh(geometry, material));
+        }
     }
 
     function create() {
-        if (_.material && !_.loaded) {
-            loadCountry();
-        }
-        _.sphereObject.name = _.me.name;
+        loadCountry.call(this);
         var tj = this.threejsPlugin;
         tj.addGroup(_.sphereObject);
-    }
-
-    var vertexShader = '\n    varying vec2 vN;\n    void main() {\n        vec4 p = vec4( position, 1. );\n        vec3 e = normalize( vec3( modelViewMatrix * p ) );\n        vec3 n = normalize( normalMatrix * normal );\n        vec3 r = reflect( e, n );\n        float m = 2. * length( vec3( r.xy, r.z + 1. ) );\n        vN = r.xy / m + .5;\n        gl_Position = projectionMatrix * modelViewMatrix * p;\n    }\n    ';
-    var fragmentShader = '\n    uniform sampler2D tMatCap;\n    varying vec2 vN;\n    void main() {\n        vec3 base = texture2D( tMatCap, vN ).rgb;\n        gl_FragColor = vec4( base, 1. );\n    }\n    ';
-    function makeEnvMapMaterial(imgUrl, cb) {
-        var type = 't';
-        var tj = this.threejsPlugin;
-        var shading = THREE.SmoothShading;
-        var uniforms = { tMatCap: { type: type, value: tj.texture(imgUrl) } };
-        var material = new THREE.ShaderMaterial({
-            shading: shading,
-            uniforms: uniforms,
-            vertexShader: vertexShader,
-            fragmentShader: fragmentShader
-        });
-        cb.call(this, material);
     }
 
     return {
@@ -7357,6 +7434,12 @@ var world3d = (function () {
         sphere: function sphere() {
             return _.sphereObject;
         },
+        style: function style(s) {
+            if (s) {
+                _.style = s;
+            }
+            return _.style;
+        },
         extrude: function extrude(inner) {
             for (var name in _.world) {
                 var dataItem = _.world[name];
@@ -7377,20 +7460,12 @@ var world3d2 = (function () {
     /*eslint no-console: 0 */
     var _ = {
         group: {},
-        sphereObject: new THREE.Group(), //new THREE.Object3D(),
+        sphereObject: null,
         material: new THREE.MeshPhongMaterial({
             color: new THREE.Color(0xaa9933),
             side: THREE.DoubleSide
         })
     };
-    var ambient = new THREE.AmbientLight(0x777777);
-    var light1 = new THREE.DirectionalLight(0xffffff);
-    var light2 = new THREE.DirectionalLight(0xffffff);
-    light1.position.set(1, 0, 1);
-    light2.position.set(-1, 0, 1);
-    _.sphereObject.add(ambient);
-    _.sphereObject.add(light1);
-    _.sphereObject.add(light2);
 
     function _extrude(geometry) {
         var _i = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 0.9;
@@ -7476,13 +7551,14 @@ var world3d2 = (function () {
     }
 
     function create() {
-        !_.loaded && loadCountry.call(this);
         this.threejsPlugin.addGroup(_.sphereObject);
+        loadCountry.call(this);
     }
 
     function init() {
         var r = this._.proj.scale();
         this._.options.showWorld = true;
+        _.sphereObject = this.threejsPlugin.light3d();
         _.sphereObject.rotation.y = rtt;
         _.sphereObject.scale.set(r, r, r);
         _.sphereObject.name = _.me.name;
@@ -7820,6 +7896,7 @@ earthjs$2.plugins = {
     baseCsv: baseCsv,
     baseGeoJson: baseGeoJson,
     worldJson: worldJson,
+    world3dJson: world3dJson,
     choroplethCsv: choroplethCsv,
     countryNamesCsv: countryNamesCsv,
 
