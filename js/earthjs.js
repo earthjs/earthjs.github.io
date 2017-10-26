@@ -86,6 +86,7 @@ var earthjs$2 = function earthjs() {
     }, options);
     var _ = {
         onCreate: {},
+        onCreateCall: 0,
         onCreateVals: [],
 
         onRefresh: {},
@@ -101,12 +102,34 @@ var earthjs$2 = function earthjs() {
         onTweenVals: [],
 
         ready: null,
+        plugins: [],
         promeses: [],
         loadingData: null,
-        recreateSvgOrCanvas: function recreateSvgOrCanvas() {
-            _.onCreateVals.forEach(function (fn) {
-                fn.call(globe);
-            });
+        recreateSvgOrCanvas: function recreateSvgOrCanvas(allPlugins) {
+            if (allPlugins) {
+                globe.__plugins().forEach(function (g) {
+                    g.__on__.onCreate.call(globe);
+                });
+            } else {
+                _.onCreateVals.forEach(function (fn) {
+                    fn.call(globe);
+                });
+            }
+            if (_.onCreateCall === 0) {
+                var plugins = Object.keys(_.onCreate).map(function (s) {
+                    return globe[s];
+                }).filter(function (g) {
+                    return g.__name__.match(/^((?!threejs).)*$/i);
+                });
+                _.onCreate = {};
+                plugins.forEach(function (g) {
+                    return _.onCreate[g.name] = g.__on__.onCreate;
+                });
+                _.onCreateVals = Object.keys(_.onCreate).map(function (k) {
+                    return _.onCreate[k];
+                });
+            }
+            _.onCreateCall++;
             return globe;
         }
     };
@@ -191,7 +214,12 @@ var earthjs$2 = function earthjs() {
             }
         },
         register: function register(obj, name) {
-            var ar = { name: name || obj.name, __on__: {} };
+            var ar = {
+                name: name || obj.name,
+                __name__: obj.name,
+                __on__: {}
+            };
+            _.plugins.push(ar);
             globe[ar.name] = ar;
             Object.keys(obj).forEach(function (fn) {
                 if (['urls', 'onReady', 'onInit', 'onTween', 'onCreate', 'onResize', 'onRefresh', 'onInterval'].indexOf(fn) === -1) {
@@ -232,8 +260,10 @@ var earthjs$2 = function earthjs() {
     var __ = globe._;
 
     globe.create = function (twinEarth) {
+        var allPlugins = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
+
         earths = twinEarth || [];
-        _.recreateSvgOrCanvas();
+        _.recreateSvgOrCanvas(allPlugins);
         earths.forEach(function (p) {
             p.create(null);
         });
@@ -333,31 +363,10 @@ var earthjs$2 = function earthjs() {
     };
 
     __.interval = function (t) {
-        var _iteratorNormalCompletion3 = true;
-        var _didIteratorError3 = false;
-        var _iteratorError3 = undefined;
-
-        try {
-            for (var _iterator3 = _.onIntervalVals[Symbol.iterator](), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
-                var fn1 = _step3.value;
-
-                fn1.call(globe, t);
-            }
-        } catch (err) {
-            _didIteratorError3 = true;
-            _iteratorError3 = err;
-        } finally {
-            try {
-                if (!_iteratorNormalCompletion3 && _iterator3.return) {
-                    _iterator3.return();
-                }
-            } finally {
-                if (_didIteratorError3) {
-                    throw _iteratorError3;
-                }
-            }
+        var l = _.onIntervalVals.length;
+        while (l--) {
+            _.onIntervalVals[l].call(globe, t);
         }
-
         return globe;
     };
 
@@ -370,56 +379,36 @@ var earthjs$2 = function earthjs() {
                 _.onRefresh[fn].call(globe);
             });
         } else {
-            var _iteratorNormalCompletion4 = true;
-            var _didIteratorError4 = false;
-            var _iteratorError4 = undefined;
-
-            try {
-                for (var _iterator4 = _.onRefreshVals[Symbol.iterator](), _step4; !(_iteratorNormalCompletion4 = (_step4 = _iterator4.next()).done); _iteratorNormalCompletion4 = true) {
-                    var fn2 = _step4.value;
-
-                    fn2.call(globe);
-                }
-            } catch (err) {
-                _didIteratorError4 = true;
-                _iteratorError4 = err;
-            } finally {
-                try {
-                    if (!_iteratorNormalCompletion4 && _iterator4.return) {
-                        _iterator4.return();
-                    }
-                } finally {
-                    if (_didIteratorError4) {
-                        throw _iteratorError4;
-                    }
-                }
+            var l = _.onRefreshVals.length;
+            while (l--) {
+                _.onRefreshVals[l].call(globe);
             }
         }
         return globe;
     };
 
     __.resize = function () {
-        var _iteratorNormalCompletion5 = true;
-        var _didIteratorError5 = false;
-        var _iteratorError5 = undefined;
+        var _iteratorNormalCompletion3 = true;
+        var _didIteratorError3 = false;
+        var _iteratorError3 = undefined;
 
         try {
-            for (var _iterator5 = _.onResizeVals[Symbol.iterator](), _step5; !(_iteratorNormalCompletion5 = (_step5 = _iterator5.next()).done); _iteratorNormalCompletion5 = true) {
-                var fn3 = _step5.value;
+            for (var _iterator3 = _.onResizeVals[Symbol.iterator](), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
+                var fn3 = _step3.value;
 
                 fn3.call(globe);
             }
         } catch (err) {
-            _didIteratorError5 = true;
-            _iteratorError5 = err;
+            _didIteratorError3 = true;
+            _iteratorError3 = err;
         } finally {
             try {
-                if (!_iteratorNormalCompletion5 && _iterator5.return) {
-                    _iterator5.return();
+                if (!_iteratorNormalCompletion3 && _iterator3.return) {
+                    _iterator3.return();
                 }
             } finally {
-                if (_didIteratorError5) {
-                    throw _iteratorError5;
+                if (_didIteratorError3) {
+                    throw _iteratorError3;
                 }
             }
         }
@@ -483,6 +472,15 @@ var earthjs$2 = function earthjs() {
                     });
                 });
             }
+        }
+    };
+    globe.__plugins = function (filter) {
+        if (filter === undefined) {
+            return _.plugins;
+        } else {
+            return _.plugins.filter(function (obj) {
+                return obj.__name__.match(filter);
+            });
         }
     };
     return globe;
@@ -1663,24 +1661,6 @@ var mousePlugin = (function () {
     };
 });
 
-var configPlugin = (function () {
-    /*eslint no-console: 0 */
-    return {
-        name: 'configPlugin',
-        set: function set(newOpt) {
-            if (newOpt) {
-                Object.assign(this._.options, newOpt);
-                if (newOpt.spin !== undefined) {
-                    var rotate = this.autorotatePlugin;
-                    newOpt.spin ? rotate.start() : rotate.stop();
-                }
-                this.create();
-            }
-            return Object.assign({}, this._.options);
-        }
-    };
-});
-
 // Bo Ericsson’s Block http://bl.ocks.org/boeric/aa80b0048b7e39dd71c8fbe958d1b1d4
 var canvasPlugin = (function () {
     /*eslint no-console: 0 */
@@ -1856,6 +1836,9 @@ var inertiaPlugin = (function () {
         });
     }
 
+    var scaleX = d3.scaleLinear().domain([65.3, 184.5]).range([0.60, 0.25]);
+    var scaleY = d3.scaleLinear().domain([65.3, 184.5]).range([0.55, 0.20]);
+
     function inertiaDrag() {
         var _this2 = this;
 
@@ -1872,8 +1855,8 @@ var inertiaPlugin = (function () {
         rotateVY *= 0.90;
 
         if (dragging) {
-            rotateVX *= 0.25;
-            rotateVY *= 0.20;
+            rotateVX *= _.dragX; // 0.25;
+            rotateVY *= _.dragY; // 0.20;
         }
 
         if (rotateY < -100) {
@@ -1933,6 +1916,7 @@ var inertiaPlugin = (function () {
             return v.call(_this3, _.event, _.mouse);
         });
         _.removeEventQueue(_.me.name, 'onTween');
+        _.addEventQueue(_.me.name, 'onInterval');
         _.this._.drag = null;
     }
 
@@ -1960,6 +1944,7 @@ var inertiaPlugin = (function () {
 
     function onEndDrag() {
         dragging = false;
+        _.removeEventQueue(_.me.name, 'onInterval');
         if (draggMove) {
             draggMove = false;
             _.addEventQueue(_.me.name, 'onTween');
@@ -2017,6 +2002,18 @@ var inertiaPlugin = (function () {
         _.rotate = this._.rotate;
         _.addEventQueue = this.__addEventQueue;
         _.removeEventQueue = this.__removeEventQueue;
+        _.removeEventQueue(_.me.name, 'onInterval');
+        var r = _.proj.scale();
+        r = r > 200 ? 200 : r; // 184.5
+        _.dragX = scaleX(r);
+        _.dragY = scaleY(r);
+    }
+
+    function resize() {
+        var r = _.proj.scale();
+        r = r > 200 ? 200 : r; // 184.5
+        _.dragX = scaleX(r);
+        _.dragY = scaleY(r);
     }
 
     return {
@@ -2029,6 +2026,9 @@ var inertiaPlugin = (function () {
         },
         onCreate: function onCreate() {
             create.call(this);
+        },
+        onResize: function onResize() {
+            resize.call(this);
         },
         selectAll: function selectAll(q) {
             if (q) {
@@ -2178,18 +2178,20 @@ var threejsPlugin = (function () {
     var SCALE = void 0;
 
     // Converts a point [longitude, latitude] in degrees to a THREE.Vector3.
-    function _vertex(point) {
+    function _vertex(point, r) {
         var lambda = point[0] * Math.PI / 180,
             phi = point[1] * Math.PI / 180,
             cosPhi = Math.cos(phi);
-        return new THREE.Vector3(SCALE * cosPhi * Math.cos(lambda), SCALE * Math.sin(phi), -SCALE * cosPhi * Math.sin(lambda));
+        return new THREE.Vector3(r * cosPhi * Math.cos(lambda), r * Math.sin(phi), -r * cosPhi * Math.sin(lambda));
     }
 
     // Converts a GeoJSON MultiLineString in spherical coordinates to a THREE.LineSegments.
-    function _wireframe(multilinestring, material) {
+    function _wireframe(multilinestring, material, r) {
         var geometry = new THREE.Geometry();
         multilinestring.coordinates.forEach(function (line) {
-            d3.pairs(line.map(_vertex), function (a, b) {
+            d3.pairs(line.map(function (p) {
+                return _vertex(p, r);
+            }), function (a, b) {
                 geometry.vertices.push(a, b);
             });
         });
@@ -2349,13 +2351,20 @@ var threejsPlugin = (function () {
             _rotate.call(this, obj);
         },
         vertex: function vertex(point) {
-            return _vertex(point);
+            var r = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : SCALE;
+
+            return _vertex(point, r);
         },
         wireframe: function wireframe(multilinestring, material) {
-            return _wireframe(multilinestring, material);
+            var r = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : SCALE;
+
+            return _wireframe(multilinestring, material, r);
         },
         texture: function texture(imgUrl) {
+            var _this3 = this;
+
             return loader.load(imgUrl, function (image) {
+                _renderThree.call(_this3);
                 return image;
             });
         },
@@ -3192,6 +3201,13 @@ var worldSvg = (function (worldUrl) {
         $.lakesPath = $.lakesG.append('path').datum(_.lakes);
     }
 
+    function init() {
+        _.svgAddCountries = svgAddCountries;
+        _.svgAddWorldBg = svgAddWorldBg;
+        _.svgAddLakes = svgAddLakes;
+        _.svgAddWorld = svgAddWorld;
+    }
+
     return {
         name: 'worldSvg',
         urls: worldUrl && [worldUrl],
@@ -3200,17 +3216,14 @@ var worldSvg = (function (worldUrl) {
         },
         onInit: function onInit(me) {
             _.me = me;
-            var __ = this._;
-            var options = __.options;
+            _.svg = this._.svg;
+            var options = this._.options;
+
             options.showLand = true;
             options.showLakes = true;
             options.showCountries = true;
             options.transparentLand = false;
-            _.svgAddCountries = svgAddCountries;
-            _.svgAddWorldBg = svgAddWorldBg;
-            _.svgAddLakes = svgAddLakes;
-            _.svgAddWorld = svgAddWorld;
-            _.svg = __.svg;
+            init.call(this);
         },
         onCreate: function onCreate() {
             if (this.worldJson && !_.world) {
@@ -3443,12 +3456,6 @@ var sphereSvg = (function () {
     var _ = { svg: null, q: null, sphereColor: 0 };
     var $ = {};
 
-    function init() {
-        var __ = this._;
-        __.options.showSphere = true;
-        _.svg = __.svg;
-    }
-
     function create() {
         var klas = _.me.name;
         _.svg.selectAll('#glow,.sphere.' + klas).remove();
@@ -3467,7 +3474,10 @@ var sphereSvg = (function () {
         name: 'sphereSvg',
         onInit: function onInit(me) {
             _.me = me;
-            init.call(this);
+            _.svg = this._.svg;
+            var options = this._.options;
+
+            options.showSphere = true;
         },
         onCreate: function onCreate() {
             create.call(this);
@@ -3552,12 +3562,6 @@ var placesSvg = (function (urlPlaces) {
     var _ = { svg: null, q: null, places: null };
     var $ = {};
 
-    function init() {
-        var __ = this._;
-        __.options.showPlaces = true;
-        _.svg = __.svg;
-    }
-
     function create() {
         var klas = _.me.name;
         _.svg.selectAll('.points.' + klas + ',.labels.' + klas).remove();
@@ -3615,7 +3619,10 @@ var placesSvg = (function (urlPlaces) {
         },
         onInit: function onInit(me) {
             _.me = me;
-            init.call(this);
+            _.svg = this._.svg;
+            var options = this._.options;
+
+            options.showPlaces = true;
         },
         onCreate: function onCreate() {
             create.call(this);
@@ -3649,12 +3656,15 @@ var placesSvg = (function (urlPlaces) {
 var flattenSvg = (function () {
     /*eslint no-console: 0 */
     var _ = {};
+    window._flat = _;
 
     function init() {
         var g1 = this._.proj;
         var g2 = d3.geoEquirectangular().scale(this._.options.width / 6.3).translate(this._.center);
         _.g1 = g1;
         _.g2 = g2;
+        _.scale = d3.scaleLinear().domain([47.3, _.g1.scale()]).range([0.0559, 1]);
+        _.scaleG2 = d3.scaleLinear().domain([47.3, _.g1.scale()]).range([0, _.g2.scale()]);
     }
 
     function animation() {
@@ -3668,7 +3678,7 @@ var flattenSvg = (function () {
     }
 
     function interpolatedProjection(a, b) {
-        var px = d3.geoProjection(raw).scale(1);
+        _.px = d3.geoProjection(raw).scale(1);
         var alpha = void 0;
 
         function raw(lamda, pi) {
@@ -3686,12 +3696,12 @@ var flattenSvg = (function () {
                 cb = b.center(),
                 ta = a.translate(),
                 tb = b.translate();
-            px.center([(1 - alpha) * ca[0] + alpha * cb[0], (1 - alpha) * ca[1] + alpha * cb[1]]);
-            px.translate([(1 - alpha) * ta[0] + alpha * tb[0], (1 - alpha) * ta[1] + alpha * tb[1]]);
-            return px;
+            _.px.center([(1 - alpha) * ca[0] + alpha * cb[0], (1 - alpha) * ca[1] + alpha * cb[1]]);
+            _.px.translate([(1 - alpha) * ta[0] + alpha * tb[0], (1 - alpha) * ta[1] + alpha * tb[1]]);
+            return _.px;
         };
         animation.alpha(0);
-        return px;
+        return _.px;
     }
 
     //Rotate to default before animation
@@ -3712,14 +3722,25 @@ var flattenSvg = (function () {
             _.me = me;
             init.call(this);
         },
+        onResize: function onResize() {
+            if (this._.options.map) {
+                var g1 = _.g1.scale();
+                var g2 = _.scale(g1);
+                _.px.scale(g2);
+                _.path.attr('d', this._.path);
+            }
+        },
         toMap: function toMap() {
             var _this2 = this;
 
             defaultRotate.call(this).on('end', function () {
+                _.g2.scale(_.scaleG2(_.g1.scale()));
                 var proj = interpolatedProjection(_.g1, _.g2);
                 _this2._.path = d3.geoPath().projection(proj);
                 animation.call(_this2).on('end', function () {
+                    _.path = _this2._.svg.selectAll('path');
                     _this2._.options.enableCenter = false;
+                    _this2._.options.map = true;
                 });
             });
         },
@@ -3727,11 +3748,15 @@ var flattenSvg = (function () {
             var _this3 = this;
 
             this._.rotate([0, 0, 0]);
+            // const scale = _.px.scale();
+            _.g2.scale(_.scaleG2(_.g1.scale()));
             var proj = interpolatedProjection(_.g2, _.g1);
+            // proj.scale(scale);
             this._.path = d3.geoPath().projection(proj);
             animation.call(this).on('end', function () {
-                _this3._.path = d3.geoPath().projection(_this3._.proj);
+                _this3._.path = d3.geoPath().projection(_.g1);
                 _this3._.options.enableCenter = true;
+                _this3._.options.map = false;
                 _this3._.refresh();
             });
         }
@@ -5354,11 +5379,7 @@ var dotsThreejs = (function (urlJson) {
         onHoverVals: []
     };
 
-    function init() {
-        this._.options.showDots = true;
-    }
-
-    function createDot(feature) {
+    function createDot(feature, r) {
         var tj = this.threejsPlugin,
             material = new THREE.MeshBasicMaterial({
             color: feature.geometry.color || 0xC19999, //F0C400,
@@ -5371,7 +5392,7 @@ var dotsThreejs = (function (urlJson) {
             radius = (feature.geometry.radius || 0.5) * 10,
             geometry = new THREE.CircleBufferGeometry(radius, 25),
             mesh = new THREE.Mesh(geometry, material),
-            position = tj.vertex(feature.geometry.coordinates);
+            position = tj.vertex(feature.geometry.coordinates, r);
         mesh.position.set(position.x, position.y, position.z);
         mesh.lookAt({ x: 0, y: 0, z: 0 });
         return mesh;
@@ -5409,10 +5430,11 @@ var dotsThreejs = (function (urlJson) {
 
         var tj = this.threejsPlugin;
         if (!_.sphereObject) {
+            var r = this._.proj.scale() + (this.__plugins('3d').length > 0 ? 4 : 0);
             _.sphereObject = new THREE.Group();
             _.sphereObject.name = _.me.name;
             _.dataDots.features.forEach(function (d) {
-                var dot = createDot.call(_this, d);
+                var dot = createDot.call(_this, d, r);
                 dot.__data__ = d;
                 _.sphereObject.add(dot);
                 if (tj.domEvents) {
@@ -5431,7 +5453,6 @@ var dotsThreejs = (function (urlJson) {
         },
         onInit: function onInit(me) {
             _.me = me;
-            init.call(this);
         },
         onCreate: function onCreate() {
             create.call(this);
@@ -5636,9 +5657,8 @@ var canvasThreejs = (function (worldUrl) {
     };
 
     function init() {
-        var width = height * 2;
-        var SCALE = this._.proj.scale();
-        _.geometry = new THREE.SphereGeometry(SCALE, 30, 30);
+        var r = this._.proj.scale() + (this.__plugins('3d').length > 0 ? 4 : 0);
+        _.geometry = new THREE.SphereGeometry(r, 30, 30);
         _.newCanvas = d3.select('body').append('canvas') // document.createElement('canvas');
         .style('display', 'none').attr('class', 'ej-canvas-new').node();
         _.newContext = _.newCanvas.getContext('2d');
@@ -5646,6 +5666,7 @@ var canvasThreejs = (function (worldUrl) {
         _.texture.transparent = true;
         _.material.map = _.texture;
 
+        var width = height * 2;
         _.canvas = d3.select('body').append('canvas').style('display', 'none').attr('width', width).attr('height', height).attr('class', 'ej-canvas-ctx').node();
         _.context = _.canvas.getContext('2d');
         _.proj = d3.geoEquirectangular().scale(width / scw).translate([width / 2, height / 2]);
@@ -5692,6 +5713,7 @@ var canvasThreejs = (function (worldUrl) {
         if (!_.sphereObject) {
             resize.call(this);
             _.sphereObject = new THREE.Mesh(_.geometry, _.material);
+            // _.sphereObject.scale.set(1.02,1.02,1.02);
             _.sphereObject.name = _.me.name;
             if (tj.domEvents) {
                 tj.domEvents.addEventListener(_.sphereObject, 'mousemove', hover, false);
@@ -6055,7 +6077,6 @@ var graticuleThreejs = (function () {
     var _ = { sphereObject: null };
 
     function init() {
-        this._.options.showGraticule = true;
         _.graticule10 = graticule10();
     }
 
@@ -6435,7 +6456,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
             length = _all_tracks2.length;
 
         var group = new THREE.Group();
-        var lineWidth = lineScale(this._.proj.scale());
+        var lineWidth = lineScale(_.SCALE); // this._.proj.scale()
         for (var i = 0; i < length; ++i) {
             var _all_tracks$i4 = all_tracks[i],
                 spline = _all_tracks$i4.spline,
@@ -6536,7 +6557,7 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
     }
 
     function init() {
-        _.SCALE = this._.proj.scale();
+        _.SCALE = this._.proj.scale() + (this.__plugins('3d').length > 0 ? 4 : 0);
         _.texture = this.threejsPlugin.texture(imgUrl);
     }
 
@@ -6677,58 +6698,6 @@ var flightLineThreejs = (function (jsonUrl, imgUrl) {
     };
 });
 
-var debugThreejs = (function () {
-    var _ = { sphereObject: null, scale: null };
-
-    function init() {
-        this._.options.showDebugSpahre = true;
-    }
-
-    function create() {
-        var tj = this.threejsPlugin;
-        if (!_.sphereObject) {
-            var SCALE = this._.proj.scale();
-            _.scale = d3.scaleLinear().domain([0, SCALE]).range([0, 1]);
-            var sphere = new THREE.SphereGeometry(SCALE, 100, 100);
-            var sphereMaterial = new THREE.MeshNormalMaterial({ wireframe: false });
-            var sphereMesh = new THREE.Mesh(sphere, sphereMaterial);
-
-            // For debug ...
-            var dot1 = new THREE.SphereGeometry(30, 10, 10);
-            var dot2 = new THREE.SphereGeometry(30, 10, 10);
-            var dot3 = new THREE.SphereGeometry(30, 10, 10);
-            dot1.translate(0, 0, SCALE);
-            dot2.translate(SCALE, 0, 0);
-            dot3.translate(0, -SCALE, 0);
-            var dot1Material = new THREE.MeshBasicMaterial({ color: 'blue' });
-            var dot2Material = new THREE.MeshBasicMaterial({ color: 'red' });
-            var dot3Material = new THREE.MeshBasicMaterial({ color: 'green' });
-            var dot1Mesh = new THREE.Mesh(dot1, dot1Material);
-            var dot2Mesh = new THREE.Mesh(dot2, dot2Material);
-            var dot3Mesh = new THREE.Mesh(dot3, dot3Material);
-
-            _.sphereObject = new THREE.Object3D();
-            _.sphereObject.add(sphereMesh, dot1Mesh, dot2Mesh, dot3Mesh);
-            _.sphereObject.name = _.me.name;
-        }
-        tj.addGroup(_.sphereObject);
-    }
-
-    return {
-        name: 'debugThreejs',
-        onInit: function onInit(me) {
-            _.me = me;
-            init.call(this);
-        },
-        onCreate: function onCreate() {
-            create.call(this);
-        },
-        sphere: function sphere() {
-            return _.sphereObject;
-        }
-    };
-});
-
 // http://davidscottlyons.com/threejs/presentations/frontporch14/offline-extended.html#slide-79
 var oceanThreejs = (function (color) {
     var color2 = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 0xAAAAAA;
@@ -6736,9 +6705,7 @@ var oceanThreejs = (function (color) {
     /*eslint no-console: 0 */
     var _ = { sphereObject: null };
     if (color) {
-        _.material = new THREE.MeshPhongMaterial({
-            color: color
-        });
+        _.material = new THREE.MeshPhongMaterial({ color: color });
     } else {
         _.material = new THREE.MeshNormalMaterial({
             transparent: false,
@@ -6746,16 +6713,13 @@ var oceanThreejs = (function (color) {
             opacity: 0.8
         });
     }
-
-    function init() {
-        this._.options.transparentOcean = false;
-    }
+    _.material.transparent = true;
 
     function create() {
         var tj = this.threejsPlugin;
         if (!_.sphereObject) {
-            var SCALE = this._.proj.scale();
-            var geometry = new THREE.SphereGeometry(SCALE, 30, 30);
+            var r = this._.proj.scale() - (this.__plugins('3d').length > 0 ? 5 : 0);
+            var geometry = new THREE.SphereGeometry(r, 30, 30);
             if (color) {
                 var ambient = new THREE.AmbientLight(color2);
                 var mesh = new THREE.Mesh(geometry, _.material);
@@ -6774,7 +6738,6 @@ var oceanThreejs = (function (color) {
         name: 'oceanThreejs',
         onInit: function onInit(me) {
             _.me = me;
-            init.call(this);
         },
         onCreate: function onCreate() {
             create.call(this);
@@ -6821,9 +6784,10 @@ var imageThreejs = (function () {
     function create() {
         var tj = this.threejsPlugin;
         if (!_.sphereObject) {
-            var SCALE = this._.proj.scale();
-            var geometry = new THREE.SphereGeometry(SCALE, 30, 30);
+            var r = this._.proj.scale() + (this.__plugins('3d').length > 0 ? 4 : 0);
+            var geometry = new THREE.SphereGeometry(r, 30, 30);
             _.sphereObject = new THREE.Mesh(geometry, _.material);
+            // _.sphereObject.scale.set(1.02,1.02,1.02);
             _.sphereObject.name = _.me.name;
             tj.addGroup(_.sphereObject);
         } else {
@@ -7016,7 +6980,8 @@ var worldThreejs = (function () {
         if (!_.sphereObject) {
             var mesh = topojson.mesh(_.world, _.world.objects.countries);
             var material = new THREE.MeshBasicMaterial({ color: 0x707070 });
-            _.sphereObject = tj.wireframe(mesh, material);
+            var r = this._.proj.scale() + (this.__plugins('3d').length > 0 ? 4 : 0);
+            _.sphereObject = tj.wireframe(mesh, material, r);
             _.sphereObject.name = _.me.name;
         }
         tj.addGroup(_.sphereObject);
@@ -7343,7 +7308,7 @@ if (window.THREE) {
 }
 
 // import data from './globe';
-var world3d = (function () {
+var world3dThreejs = (function () {
     var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/world.geometry.json';
     var imgUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/gold.jpg';
     var inner = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0.9;
@@ -7358,46 +7323,41 @@ var world3d = (function () {
     var vertexShader = '\nvarying vec2 vN;\nvoid main() {\nvec4 p = vec4( position, 1. );\nvec3 e = normalize( vec3( modelViewMatrix * p ) );\nvec3 n = normalize( normalMatrix * normal );\nvec3 r = reflect( e, n );\nfloat m = 2. * length( vec3( r.xy, r.z + 1. ) );\nvN = r.xy / m + .5;\ngl_Position = projectionMatrix * modelViewMatrix * p;\n}';
     var fragmentShader = '\nuniform sampler2D sampler;\nuniform vec3 diffuse;\nvarying vec2 vN;\nvoid main() {\nvec4 tex = texture2D( sampler, vN );\ngl_FragColor = tex + vec4( diffuse, 0 ) * 0.5;\n}';
     function init() {
-        var tj = this.threejsPlugin;
-        var r = this._.proj.scale() + 5;
+        var r = this._.proj.scale();
         this._.options.showWorld = true;
         _.sphereObject.rotation.y = rtt;
         _.sphereObject.scale.set(r, r, r);
         _.sphereObject.name = _.me.name;
-        _.uniforms = {
-            sampler: { type: 't', value: tj.texture(imgUrl) },
-            diffuse: { type: 'c', value: new THREE.Color(_.style.land || 'black') }
-        };
     }
 
     var material = void 0,
         uniforms = void 0;
-    function loadCountry() {
+    function create() {
         var data = _.world;
-        uniforms = _.uniforms;
+        var tj = this.threejsPlugin;
         var choropleth = this._.options.choropleth;
 
-        material = new THREE.ShaderMaterial({ uniforms: uniforms, vertexShader: vertexShader, fragmentShader: fragmentShader });
+        _.uniforms = {
+            sampler: { type: 't', value: tj.texture(imgUrl) },
+            diffuse: { type: 'c', value: new THREE.Color(_.style.land || 'black') }
+        };
         for (var name in data) {
             if (choropleth) {
                 var properties = data[name].properties || { color: _.style.countries };
                 var diffuse = { type: 'c', value: new THREE.Color(properties.color || 'black') };
                 uniforms = Object.assign({}, _.uniforms, { diffuse: diffuse });
-                material = new THREE.ShaderMaterial({ uniforms: uniforms, vertexShader: vertexShader, fragmentShader: fragmentShader });
+            } else {
+                uniforms = _.uniforms;
             }
             var geometry = new Map3DGeometry(data[name], inner);
+            material = new THREE.ShaderMaterial({ uniforms: uniforms, vertexShader: vertexShader, fragmentShader: fragmentShader });
             _.sphereObject.add(data[name].mesh = new THREE.Mesh(geometry, material));
         }
-    }
-
-    function create() {
-        loadCountry.call(this);
-        var tj = this.threejsPlugin;
         tj.addGroup(_.sphereObject);
     }
 
     return {
-        name: 'world3d',
+        name: 'world3dThreejs',
         urls: worldUrl && [worldUrl],
         onReady: function onReady(err, data) {
             _.me.data(data);
@@ -7417,6 +7377,7 @@ var world3d = (function () {
         },
         onCreate: function onCreate() {
             create.call(this);
+            this.__removeEventQueue(_.me.name, 'onTween');
         },
         onTween: function onTween() {
             _.tween && _.tween.call(this);
@@ -7450,7 +7411,7 @@ var world3d = (function () {
 });
 
 // view-source:http://callumprentice.github.io/apps/extruded_earth/index.html
-var world3d2 = (function () {
+var world3dThreejs2 = (function () {
     var worldUrl = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '../d/countries.geo.json';
     var landUrl = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : '../globe/gold.jpg';
     var inner = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 0.9;
@@ -7565,7 +7526,7 @@ var world3d2 = (function () {
     }
 
     return {
-        name: 'world3d2',
+        name: 'world3dThreejs2',
         urls: worldUrl && [worldUrl],
         onReady: function onReady(err, data) {
             _.me.data(data);
@@ -7906,7 +7867,6 @@ earthjs$2.plugins = {
     hoverCanvas: hoverCanvas,
     clickCanvas: clickCanvas,
     mousePlugin: mousePlugin,
-    configPlugin: configPlugin,
     canvasPlugin: canvasPlugin,
     inertiaPlugin: inertiaPlugin,
     countryCanvas: countryCanvas,
@@ -7953,15 +7913,14 @@ earthjs$2.plugins = {
     textureThreejs: textureThreejs,
     graticuleThreejs: graticuleThreejs,
     flightLineThreejs: flightLineThreejs,
-    debugThreejs: debugThreejs,
     oceanThreejs: oceanThreejs,
     imageThreejs: imageThreejs,
     inertiaThreejs: inertiaThreejs,
     worldThreejs: worldThreejs,
     globeThreejs: globeThreejs,
     sphereThreejs: sphereThreejs,
-    world3d: world3d,
-    world3d2: world3d2,
+    world3dThreejs: world3dThreejs,
+    world3dThreejs2: world3dThreejs2,
 
     commonPlugins: commonPlugins,
     selectCountryMix: selectCountryMix,
